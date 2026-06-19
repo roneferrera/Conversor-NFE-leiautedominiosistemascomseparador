@@ -449,20 +449,20 @@ def gerar_registro_0110(det) -> str:
 # ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
-                        especie: str = "36",
-                        importacao: bool = False) -> str:
+                        especie: str = "36") -> str:
     ide   = nfe_root.find("nfe:infNFe/nfe:ide", NS)
     emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
     dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
 
+    importacao = is_nota_importacao(nfe_root)
+
     # ── Campo 3: Inscrição do fornecedor ─────────────────────────────
-    # Importação → fornecedor é o <dest> exterior (HILLROM)
-    #   idEstrangeiro se preenchido, senão nome truncado, senão vazio
-    # Nacional    → fornecedor é o <emit> (CNPJ do emitente)
+    # Importação → dados do <dest> (HILLROM — fornecedor exterior)
+    # Nacional   → CNPJ do <emit>
     if importacao and dest is not None:
         id_ext    = get_text(dest, "nfe:idEstrangeiro").strip()
-        cnpj_forn = id_ext if id_ext else ""
+        cnpj_forn = id_ext if id_ext else ""   # HILLROM não tem CNPJ → vazio
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ")
 
@@ -528,7 +528,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         "", "", "", "", "", "", "", "", "", "", "", "", "", "", v_ipi, v_st,
         "", "", "", "", "", v_icms_d, "",
     ])
-
 # ─────────────────────────────────────────────
 # REGISTROS 1010 / 1015
 # ─────────────────────────────────────────────
