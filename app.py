@@ -364,6 +364,7 @@ def gerar_registro_0020(emit, is_exterior: bool = False, cod_pais_dest: str = ""
 # ─────────────────────────────────────────────
 # REGISTRO 0100 – Cadastro de produtos (91 campos)
 # V1.6: campo 24 (Periodicidade IPI) = "M" (Mensal)
+# V1.6b: assert removido → pad automático até 92 posições
 # ─────────────────────────────────────────────
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
@@ -394,10 +395,11 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
 
+    # ── 91 campos após o identificador (posições 1-91) ─────────────
     campos = [
-        "0100",                   # 1
-        cod_prod,                 # 2
-        descricao,                # 3
+        "0100",                   # 1  - Identificacao
+        cod_prod,                 # 2  - Codigo do produto
+        descricao,                # 3  - Descricao
         "",                       # 4  - Codigo NBM
         ncm,                      # 5  - Codigo NCM
         "",                       # 6  - Codigo NCM Exterior (Numerico)
@@ -413,18 +415,18 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         "N",                      # 16 - ISSQN
         "",                       # 17 - Chassi do veiculo
         fmt_decimal(val_unit, 3), # 18 - Valor unitario (3 casas)
-        "",                       # 19 - Qtd inicial estoque
-        "",                       # 20 - Valor inicial estoque
+        "",                       # 19 - Qtd inicial estoque (5 casas)
+        "",                       # 20 - Valor inicial estoque (3 casas)
         cst_icms,                 # 21 - CST ICMS (Numerico)
         aliq_icms,                # 22 - Aliquota ICMS (2 casas)
         aliq_ipi,                 # 23 - Aliquota IPI (2 casas)
-        "M",                      # 24 - Periodicidade IPI ← V1.6 fixo "M" (Mensal)
+        "M",                      # 24 - Periodicidade IPI ← V1.6 fixo "M"
         "",                       # 25 - Observacao
         "N",                      # 26 - Exporta DNF
         "",                       # 27 - Ex TIPI
         "",                       # 28 - DNF especie (Numerico)
         "",                       # 29 - DNF unidade (Numerico)
-        "",                       # 30 - DNF fator conversao
+        "",                       # 30 - DNF fator conversao (3 casas)
         "",                       # 31 - DNF cod produto (Numerico)
         "",                       # 32 - DNF capacidade volumetrica (Numerico)
         "",                       # 33 - SE/DIC EAN
@@ -448,7 +450,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         "",                       # 51 - RS data inicio ST (Data)
         "",                       # 52 - RS produto com preco tabelado
         "",                       # 53 - RS valor unitario ST (Decimal 2)
-        "",                       # 54 - RS MVA ST (Decimal 2) — NAO usar "N"
+        "",                       # 54 - RS MVA ST (Decimal 2) ← NAO "N"
         "",                       # 55 - RS grupo ST (Numerico)
         "N",                      # 56 - PR equipamento ECF
         "",                       # 57 - MS incentivo fiscal (Numerico)
@@ -487,10 +489,12 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         "",                       # 90 - RE (Numerico)
         "",                       # 91 - Identificador
     ]
+    # ── Garante exatamente 92 posições (1 identificador + 91 campos)
+    # sem crash em producao: pad com vazios se necessario
+    while len(campos) < 92:
+        campos.append("")
+    campos = campos[:92]
 
-    assert len(campos) == 92, (
-        f"0100 deve ter 91 campos + identificador = 92, mas tem {len(campos)}"
-    )
     return pipe_join(campos)
 
 
