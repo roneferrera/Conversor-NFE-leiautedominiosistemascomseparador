@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V1.9-FINAL"
+VERSAO = "V2.1-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -119,12 +119,14 @@ def get_grupo_por_ncm(ncm: str) -> int:
         return 1
     cap = ncm[:2]
     mapa = {
-        "84": 10, "85": 10, "86": 10, "87": 10, "88": 10, "89": 10, "90": 10, "91": 10, "94": 10,
-        "28": 3, "29": 3, "30": 3, "31": 3, "32": 3, "33": 3, "34": 3, "38": 3,
-        "39": 3, "40": 3, "44": 3, "47": 3, "48": 3, "72": 3, "73": 3, "74": 3,
-        "75": 3, "76": 3, "82": 3, "83": 3,
-        "01": 2, "02": 2, "03": 2, "04": 2, "07": 2, "08": 2, "09": 2, "10": 2,
-        "16": 2, "17": 2, "18": 2, "19": 2, "20": 2, "21": 2, "22": 2, "27": 2,
+        "84": 10, "85": 10, "86": 10, "87": 10, "88": 10, "89": 10,
+        "90": 10, "91": 10, "94": 10,
+        "28": 3, "29": 3, "30": 3, "31": 3, "32": 3, "33": 3, "34": 3,
+        "38": 3, "39": 3, "40": 3, "44": 3, "47": 3, "48": 3,
+        "72": 3, "73": 3, "74": 3, "75": 3, "76": 3, "82": 3, "83": 3,
+        "01": 2, "02": 2, "03": 2, "04": 2, "07": 2, "08": 2, "09": 2,
+        "10": 2, "16": 2, "17": 2, "18": 2, "19": 2, "20": 2, "21": 2,
+        "22": 2, "27": 2,
     }
     return mapa.get(cap, 1)
 
@@ -150,28 +152,33 @@ def is_nota_importacao(nfe_root) -> bool:
             return True
     return False
 
-def extrair_cnpj_dest(nfe_root) -> tuple:
+def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str) -> tuple:
+    """
+    Para NF-e de ENTRADA:
+    - Nacional: CNPJ/CPF do <dest>
+    - Importação (dest exterior): usa fallback informado pelo usuário
+    Retorna: (cnpj, origem, is_exterior)
+    """
+    importacao = is_nota_importacao(nfe_root)
     dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
-    if dest is not None:
+
+    if not importacao and dest is not None:
         cnpj = get_text(dest, "nfe:CNPJ")
         if cnpj:
             return cnpj, "XML — <dest><CNPJ>", False
         cpf = get_text(dest, "nfe:CPF")
         if cpf:
             return cpf, "XML — <dest><CPF>", False
-        id_ext = get_text(dest, "nfe:idEstrangeiro")
-        if id_ext and id_ext.strip():
-            return id_ext.strip(), "XML — <dest><idEstrangeiro>", True
-        ender_dest  = dest.find("nfe:enderDest", NS)
-        uf_dest     = get_text(ender_dest, "nfe:UF") if ender_dest is not None else ""
-        id_ext_node = dest.find("nfe:idEstrangeiro", NS)
-        if id_ext_node is not None or uf_dest == "EX":
-            emit = nfe_root.find("nfe:infNFe/nfe:emit", NS)
-            cnpj_emit = get_text(emit, "nfe:CNPJ") if emit is not None else ""
-            if cnpj_emit:
-                return cnpj_emit, "XML — <emit><CNPJ> (dest. exterior/UF=EX)", True
-            return "", "Destinatario exterior sem CNPJ", True
-    return "", "Nao encontrado no XML", False
+
+    if cnpj_fallback:
+        return somente_numeros(cnpj_fallback), "Manual (fallback)", False
+
+    emit = nfe_root.find("nfe:infNFe/nfe:emit", NS)
+    cnpj_emit = get_text(emit, "nfe:CNPJ") if emit is not None else ""
+    if cnpj_emit:
+        return cnpj_emit, "XML — <emit><CNPJ> (fallback)", importacao
+
+    return "", "Nao encontrado", importacao
 
 def extrair_nome_dest(nfe_root) -> str:
     dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
@@ -194,19 +201,23 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
 # REGISTRO 0020
 # ─────────────────────────────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
+    """
+    Importação → dados do <dest> (fornecedor exterior), CNPJ vazio, cPais BACEN do XML
+    Nacional   → dados do <emit>
+    """
     if is_importacao and dest is not None:
-        razao    = get_text(dest, "nfe:xNome")[:150]
-        fantasia = razao[:40]
-        ender    = dest.find("nfe:enderDest", NS)
-        logradouro  = get_text(ender, "nfe:xLgr")                              if ender is not None else ""
-        numero      = somente_numeros(get_text(ender, "nfe:nro"))               if ender is not None else ""
+        razao       = get_text(dest, "nfe:xNome")[:150]
+        fantasia    = razao[:40]
+        ender       = dest.find("nfe:enderDest", NS)
+        logradouro  = get_text(ender, "nfe:xLgr")                    if ender is not None else ""
+        numero      = somente_numeros(get_text(ender, "nfe:nro"))     if ender is not None else ""
         complemento = ""
-        bairro      = get_text(ender, "nfe:xBairro")                           if ender is not None else ""
-        cod_mun     = somente_numeros(get_text(ender, "nfe:cMun"))              if ender is not None else ""
-        cep         = get_text(ender, "nfe:CEP")                               if ender is not None else ""
-        # ── Código do País: retorna o código BACEN diretamente do XML ──
-        cod_pais    = somente_numeros(get_text(ender, "nfe:cPais"))             if ender is not None else ""
-        inscricao   = ""
+        bairro      = get_text(ender, "nfe:xBairro")                 if ender is not None else ""
+        cod_mun     = somente_numeros(get_text(ender, "nfe:cMun"))    if ender is not None else ""
+        cep         = get_text(ender, "nfe:CEP")                     if ender is not None else ""
+        cod_pais    = somente_numeros(get_text(ender, "nfe:cPais"))   if ender is not None else ""
+        id_ext      = get_text(dest, "nfe:idEstrangeiro").strip()
+        inscricao   = id_ext if id_ext else ""
         uf_campo    = "EX"
         ie          = ""
         regime      = "N"
@@ -217,13 +228,13 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         fantasia_raw = get_text(emit, "nfe:xFant")
         fantasia     = fantasia_raw[:40] if fantasia_raw else razao[:40]
         ender        = emit.find("nfe:enderEmit", NS)
-        logradouro   = get_text(ender, "nfe:xLgr")                             if ender is not None else ""
-        numero       = somente_numeros(get_text(ender, "nfe:nro"))              if ender is not None else ""
-        complemento  = get_text(ender, "nfe:xCpl")                             if ender is not None else ""
-        bairro       = get_text(ender, "nfe:xBairro")                          if ender is not None else ""
-        cod_mun      = somente_numeros(get_text(ender, "nfe:cMun"))             if ender is not None else ""
-        cep          = get_text(ender, "nfe:CEP")                              if ender is not None else ""
-        uf_campo     = get_text(ender, "nfe:UF")                               if ender is not None else ""
+        logradouro   = get_text(ender, "nfe:xLgr")                   if ender is not None else ""
+        numero       = somente_numeros(get_text(ender, "nfe:nro"))    if ender is not None else ""
+        complemento  = get_text(ender, "nfe:xCpl")                   if ender is not None else ""
+        bairro       = get_text(ender, "nfe:xBairro")                if ender is not None else ""
+        cod_mun      = somente_numeros(get_text(ender, "nfe:cMun"))   if ender is not None else ""
+        cep          = get_text(ender, "nfe:CEP")                    if ender is not None else ""
+        uf_campo     = get_text(ender, "nfe:UF")                     if ender is not None else ""
         cod_pais     = ""
         ie           = get_text(emit, "nfe:IE")
         crt          = get_text(emit, "nfe:CRT")
@@ -234,13 +245,13 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     return pipe_join([
         "0020", inscricao, razao, fantasia,
         logradouro, numero, complemento, bairro,
-        cod_mun, uf_campo, cod_pais, cep,         # campo 11 = cod_pais BACEN do XML
+        cod_mun, uf_campo, cod_pais, cep,
         ie, "", "", "", "", "", "", "", "",
         "N", "7", regime, contrib, "", "", "", "", "N", "N", "", "",
     ])
 
 # ─────────────────────────────────────────────
-# EXTRAIR PIS/COFINS E cClassTrib DE UM ITEM
+# EXTRAIR PIS/COFINS E cClassTrib
 # ─────────────────────────────────────────────
 def extrair_pis_cofins(det) -> dict:
     imposto = det.find("nfe:imposto", NS)
@@ -273,7 +284,6 @@ def extrair_pis_cofins(det) -> dict:
     resultado["aliq_pis_s"] = resultado["aliq_pis_e"]
     resultado["aliq_cof_s"] = resultado["aliq_cof_e"]
 
-    # cClassTrib lido da tag <IBSCBS><cClassTrib>
     ibs_node = imposto.find("nfe:IBSCBS", NS)
     if ibs_node is not None:
         resultado["class_trib"] = get_text(ibs_node, "nfe:cClassTrib")
@@ -281,8 +291,7 @@ def extrair_pis_cofins(det) -> dict:
     return resultado
 
 # ─────────────────────────────────────────────
-# REGISTRO 0100 – Cadastro de produtos (92 campos)
-# CORREÇÃO: campo 54 = "" (vazio), não "N"
+# REGISTRO 0100
 # ─────────────────────────────────────────────
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
@@ -314,212 +323,65 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
 
     campos = [
-        "0100",                   # 1
-        cod_prod,                 # 2
-        descricao,                # 3
-        "",                       # 4  - NBM
-        ncm,                      # 5  - NCM
-        "",                       # 6  - NCM Exterior
-        "",                       # 7  - Codigo barras
-        "",                       # 8  - Cod. imposto importacao
-        cod_grupo,                # 9  - Grupo
-        unidade,                  # 10 - Unidade
-        "N",                      # 11
-        "O",                      # 12 - Tipo produto
-        "",                       # 13
-        "",                       # 14
-        "",                       # 15
-        "N",                      # 16 - ISSQN
-        "",                       # 17
-        fmt_decimal(val_unit, 3), # 18 - Valor unitario
-        "",                       # 19
-        "",                       # 20
-        cst_icms,                 # 21 - CST ICMS
-        aliq_icms,                # 22 - Aliq. ICMS
-        aliq_ipi,                 # 23 - Aliq. IPI
-        "M",                      # 24 - Periodicidade IPI fixo "M"
-        "",                       # 25
-        "N",                      # 26
-        "",                       # 27
-        "",                       # 28
-        "",                       # 29
-        "",                       # 30
-        "",                       # 31
-        "",                       # 32
-        "",                       # 33
-        "",                       # 34
-        "N",                      # 35
-        "",                       # 36
-        "",                       # 37
-        "",                       # 38
-        "N",                      # 39
-        "",                       # 40
-        "",                       # 41
-        "",                       # 42
-        "N",                      # 43
-        "",                       # 44
-        "",                       # 45
-        "",                       # 46
-        "N",                      # 47
-        "N",                      # 48
-        "",                       # 49
-        "",                       # 50
-        "",                       # 51
-        "",                       # 52
-        "",                       # 53
-        "",                       # 54 ← CORRIGIDO: era "N", agora ""
-        "",                       # 55
-        "N",                      # 56
-        "",                       # 57
-        "",                       # 58
-        "",                       # 59
-        "",                       # 60
-        "N",                      # 61
-        "",                       # 62
-        "",                       # 63
-        "",                       # 64
-        "",                       # 65
-        "",                       # 66
-        "",                       # 67
-        "",                       # 68
-        "",                       # 69
-        "",                       # 70
-        "",                       # 71
-        "",                       # 72
-        "",                       # 73
-        "",                       # 74
-        "",                       # 75
-        "N",                      # 76
-        "",                       # 77
-        "",                       # 78
-        "N",                      # 79
-        "",                       # 80
-        "",                       # 81
-        "",                       # 82
-        "",                       # 83
-        "",                       # 84
-        "",                       # 85
-        "",                       # 86
-        "",                       # 87
-        "",                       # 88
-        cest,                     # 89 - CEST
-        "",                       # 90
-        "",                       # 91
+        "0100", cod_prod, descricao, "", ncm, "", "", "", cod_grupo,
+        unidade, "N", "O", "", "", "", "N", "",
+        fmt_decimal(val_unit, 3), "", "", cst_icms, aliq_icms, aliq_ipi, "M",
+        "", "N", "", "", "", "", "", "", "", "", "N", "", "", "", "N", "",
+        "", "", "N", "", "", "", "N", "N", "", "", "", "", "", "", "N",
+        "", "", "", "", "N", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", cest, "", "",
     ]
 
-    # Garante exatamente 92 campos (incluindo "0100")
     while len(campos) < 92:
         campos.append("")
     campos = campos[:92]
     return pipe_join(campos)
 
 # ─────────────────────────────────────────────
-# REGISTRO 0110 – Vigência do produto
-# Campo 2  = "Inicial" (fixo)
-# Campo 67 = IBS cClassTrib do XML
-# Campo 68 = CBS cClassTrib do XML (mesmo valor)
+# REGISTRO 0110
 # ─────────────────────────────────────────────
 def gerar_registro_0110(det) -> str:
     pc = extrair_pis_cofins(det)
     class_trib = pc["class_trib"]
 
     campos = [
-        "0110",             # 1
-        "Inicial",          # 2  - Descricao vigencia (fixo)
-        pc["cst_e"],        # 3  - CST Entrada
-        "",                 # 4  - Vinculo do credito
-        "01",               # 5  - Base do credito
-        "N",                # 6
-        "N",                # 7
-        pc["aliq_pis_e"],   # 8  - Aliquota PIS Entrada
-        pc["aliq_cof_e"],   # 9  - Aliquota COFINS Entrada
-        "N",                # 10
-        "N",                # 11
-        "",                 # 12
-        "",                 # 13
-        "",                 # 14
-        "",                 # 15
-        pc["cst_s"],        # 16 - CST Saida
-        "N",                # 17
-        "",                 # 18
-        "",                 # 19
-        "",                 # 20
-        "N",                # 21
-        pc["aliq_pis_s"],   # 22 - Aliquota PIS Saida
-        pc["aliq_cof_s"],   # 23 - Aliquota COFINS Saida
-        "N",                # 24
-        "N",                # 25
-        "",                 # 26
-        "",                 # 27
-        "",                 # 28
-        "",                 # 29
-        "",                 # 30
-        "",                 # 31
-        "N",                # 32
-        "N",                # 33
-        "",                 # 34
-        "",                 # 35
-        "",                 # 36
-        "",                 # 37
-        "",                 # 38
-        "M",                # 39 - IPI Periodicidade
-        "",                 # 40
-        "N",                # 41
-        "N",                # 42
-        "N",                # 43
-        "",                 # 44
-        "N",                # 45
-        "",                 # 46
-        "N",                # 47
-        "",                 # 48
-        "",                 # 49
-        "",                 # 50
-        "",                 # 51
-        "",                 # 52
-        "",                 # 53
-        "",                 # 54
-        "",                 # 55
-        "N",                # 56
-        "",                 # 57
-        "",                 # 58
-        "N",                # 59
-        "",                 # 60
-        "",                 # 61
-        "N",                # 62
-        "",                 # 63
-        "N",                # 64
-        "N",                # 65
-        "N",                # 66
-        class_trib,         # 67 - IBS cClassTrib (do XML)
-        class_trib,         # 68 - CBS cClassTrib (mesmo valor)
-        "N",                # 69
-        "N",                # 70
+        "0110", "Inicial", pc["cst_e"], "", "01", "N", "N",
+        pc["aliq_pis_e"], pc["aliq_cof_e"], "N", "N", "", "", "", "",
+        pc["cst_s"], "N", "", "", "", "N", pc["aliq_pis_s"], pc["aliq_cof_s"],
+        "N", "N", "", "", "", "", "", "", "N", "N", "", "", "", "", "", "M",
+        "", "N", "N", "N", "", "N", "", "N", "", "", "", "", "", "", "N",
+        "", "", "", "", "N", "", "", "", "", "", "", "", "", "", "", "",
+        class_trib, class_trib, "N", "N",
     ]
 
     return pipe_join(campos)
 
 # ─────────────────────────────────────────────
-# REGISTRO 1000 – NF de Entrada
+# REGISTRO 1000
 # ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
-                        especie: str = "36") -> str:
+                        especie: str = "36",
+                        is_importacao: bool = False) -> str:
     ide   = nfe_root.find("nfe:infNFe/nfe:ide", NS)
     emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
 
-    cnpj_emit  = get_text(emit, "nfe:CNPJ")
-    nNF        = get_text(ide, "nfe:nNF")
-    serie      = get_text(ide, "nfe:serie")
-    dhEmi      = fmt_date(get_text(ide, "nfe:dhEmi"))
-    ie_emit    = get_text(emit, "nfe:IE")
-    c_mun_fg   = get_text(ide, "nfe:cMunFG")
+    # Campo 3: vazio para importação (fornecedor exterior sem CNPJ obrigatório)
+    cnpj_forn = "" if is_importacao else get_text(emit, "nfe:CNPJ")
+
+    nNF      = get_text(ide, "nfe:nNF")
+    dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
+    ie_emit  = get_text(emit, "nfe:IE")
+    c_mun_fg = get_text(ide, "nfe:cMunFG")
 
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     cfop_first = ""
     if det_list:
         cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
 
+    # ── Valor contábil: vNF direto do XML (mantido como estava) ──────
     v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
     v_pis    = fmt_decimal(get_text(total, "nfe:vPIS"))
     v_cofins = fmt_decimal(get_text(total, "nfe:vCOFINS"))
@@ -554,8 +416,8 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
             n_di = get_text(di_node, "nfe:nDI")
 
     return pipe_join([
-        "1000", especie, cnpj_emit, "", acumulador, cfop_first, "",
-        nNF, serie, "", dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, "T",
+        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "",
+        nNF, "", "", dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, "T",
         "", "", "", "", "", "", "", "", v_frete, v_seg, v_outro, v_pis, "",
         v_cofins, "", "", "", "", "", "", "", v_prod, c_mun_fg, "0", "", "",
         ie_emit, "", "", "", "", "", "", "", n_di, "N", chave, "", "", "", "",
@@ -596,11 +458,12 @@ def gerar_registros_1015(nfe_root) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# REGISTROS 1020 – Impostos
+# REGISTROS 1020
 # ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root) -> list:
     total  = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     ibs_t  = nfe_root.find("nfe:infNFe/nfe:total/nfe:IBSCBSTot", NS)
+    # ── Valor contábil: vNF direto do XML (mantido como estava) ──────
     v_nf   = fmt_decimal(get_text(total, "nfe:vNF"))
     linhas = []
 
@@ -693,8 +556,7 @@ def gerar_registros_1020(nfe_root) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# REGISTRO 1030 – Estoque / item (111 campos)
-# CORREÇÃO: campo 9 (DI) = somente_numeros()
+# REGISTRO 1030
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int) -> str:
     prod    = det.find("nfe:prod", NS)
@@ -710,10 +572,9 @@ def gerar_registro_1030(det, seq: int) -> str:
     v_unit   = get_text(prod, "nfe:vUnCom")
     cest     = get_text(prod, "nfe:CEST")
 
-    di_node  = prod.find("nfe:DI", NS)
-    # ── CORREÇÃO: somente dígitos no número da DI ──────────────────
-    n_di     = somente_numeros(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
-    d_di     = fmt_date(get_text(di_node, "nfe:dDI"))        if di_node is not None else ""
+    di_node = prod.find("nfe:DI", NS)
+    n_di    = somente_numeros(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
+    d_di    = fmt_date(get_text(di_node, "nfe:dDI"))        if di_node is not None else ""
 
     icms_node  = None
     v_bc_icms  = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
@@ -815,8 +676,7 @@ def gerar_registro_1030(det, seq: int) -> str:
     ])
 
 # ─────────────────────────────────────────────
-# REGISTRO 1097 – Dados do Frete SP
-# CORREÇÃO: campo 19 (Cidade) = somente_numeros(cMun)
+# REGISTRO 1097
 # ─────────────────────────────────────────────
 def gerar_registro_1097(nfe_root) -> str:
     transp = nfe_root.find("nfe:infNFe/nfe:transp", NS)
@@ -837,7 +697,6 @@ def gerar_registro_1097(nfe_root) -> str:
     ie_transp    = get_text(transporta, "nfe:IE")     if transporta is not None else ""
     end_transp   = get_text(transporta, "nfe:xEnder") if transporta is not None else ""
     uf_transp    = get_text(transporta, "nfe:UF")     if transporta is not None else ""
-    # ── CORREÇÃO: campo 19 deve ser numérico (código IBGE) ─────────
     cmun_transp  = get_text(transporta, "nfe:cMun")   if transporta is not None else ""
     cidade_cod   = somente_numeros(cmun_transp) if cmun_transp else ""
     tipo_insc    = "1" if cnpj_transp else ""
@@ -890,26 +749,20 @@ def converter_xml(
     if nfe is None:
         nfe = root
 
-    cnpj_xml, origem_cnpj, is_exterior = extrair_cnpj_dest(nfe)
+    importacao = is_nota_importacao(nfe)
+    cnpj_empresa, origem_cnpj, is_exterior = extrair_cnpj_empresa(nfe, cnpj_fallback)
+
+    if not cnpj_empresa:
+        return "", {"erro": "CNPJ nao encontrado. Para notas de importacao, informe o CNPJ Fallback."}
+
     nome_dest = extrair_nome_dest(nfe)
     uf_dest   = extrair_uf_dest(nfe)
-
-    if cnpj_xml:
-        cnpj_empresa = cnpj_xml
-    elif cnpj_fallback:
-        cnpj_empresa = cnpj_fallback
-        origem_cnpj  = "Manual (fallback)"
-        is_exterior  = False
-    else:
-        return "", {"erro": "CNPJ nao encontrado no XML nem informado manualmente."}
-
-    importacao = is_nota_importacao(nfe)
-    dest_node  = nfe.find("nfe:infNFe/nfe:dest", NS)
 
     lines    = []
     resumo   = {}
     det_list = nfe.findall("nfe:infNFe/nfe:det", NS)
     emit     = nfe.find("nfe:infNFe/nfe:emit", NS)
+    dest_node= nfe.find("nfe:infNFe/nfe:dest", NS)
     ide      = nfe.find("nfe:infNFe/nfe:ide", NS)
     total    = nfe.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
 
@@ -951,7 +804,7 @@ def converter_xml(
                     lines.append(gerar_registro_0110(det))
                 produtos_gerados.add(cod)
 
-    lines.append(gerar_registro_1000(nfe, cnpj_empresa, acumulador, especie))
+    lines.append(gerar_registro_1000(nfe, cnpj_empresa, acumulador, especie, importacao))
 
     if incluir_1010:
         for r in gerar_registros_1010(nfe):
@@ -971,7 +824,6 @@ def converter_xml(
         if r1097:
             lines.append(r1097)
 
-    # IBS/CBS agrupados por cClassTrib → 1150/1151
     ibs_gerados = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1027,9 +879,14 @@ with st.sidebar:
     st.markdown("**Dominio Sistemas**")
     st.markdown("---")
     st.markdown("### Parametros")
-    cnpj_fallback = st.text_input("CNPJ Fallback (opcional)", value="", max_chars=14)
-    acumulador    = st.text_input("Codigo do Acumulador", value="1157")
-    especie       = st.text_input("Codigo da Especie", value="36")
+    cnpj_fallback = st.text_input(
+        "CNPJ da Empresa (obrigatorio para importacao)",
+        value="",
+        max_chars=14,
+        help="Para notas de importacao (CFOP 3xxx / dest. exterior), informe o CNPJ da empresa importadora."
+    )
+    acumulador = st.text_input("Codigo do Acumulador", value="1157")
+    especie    = st.text_input("Codigo da Especie", value="36")
     st.markdown("---")
     st.markdown("### Registros de cadastro")
     inc_0000 = st.checkbox("0000 - Identificacao da empresa", value=True)
@@ -1067,15 +924,17 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>Versao Final — Todas as correcoes aplicadas</h4>
+        <h4>V2.1-FINAL</h4>
         <ul>
+          <li><b>Valor contabil (1000 campo 13 / 1020)</b>: revertido para <b>vNF</b> direto do XML</li>
+          <li><b>1000 campo 3</b>: Importacao → <b>vazio</b> (fornecedor exterior sem CNPJ obrigatorio)</li>
+          <li><b>0020</b>: Importacao → dados do <b>destinatario exterior</b>, CNPJ vazio, cPais BACEN do XML</li>
+          <li><b>0000 / 1000</b>: CNPJ da empresa importadora vem do <b>fallback</b></li>
           <li><b>0020 campo 11</b>: Codigo do Pais = codigo BACEN do XML (<code>&lt;cPais&gt;</code>)</li>
-          <li><b>0100 campo 54</b>: RS - MVA da ST = <code>""</code> (vazio, nao "N")</li>
-          <li><b>0100</b>: sempre 92 campos (pad com vazios)</li>
-          <li><b>0110 campo 2</b>: Descricao vigencia = <code>Inicial</code> (fixo)</li>
+          <li><b>0100 campo 54</b>: RS MVA = <code>""</code> (vazio)</li>
           <li><b>0110 campos 67/68</b>: IBS/CBS cClassTrib lido do XML</li>
-          <li><b>1030 campo 9</b>: Numero da DI = somente digitos</li>
-          <li><b>1097 campo 19</b>: Cidade = codigo IBGE numerico (somente_numeros)</li>
+          <li><b>1030 campo 9</b>: Numero DI = somente digitos</li>
+          <li><b>1097 campo 19</b>: Cidade = codigo IBGE numerico</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1134,15 +993,15 @@ if uploaded_files:
             st.markdown("#### Empresa Identificada")
             cols = st.columns(min(len(cnpjs_unicos), 4))
             for idx, r in enumerate(cnpjs_unicos[:4]):
-                is_ext = r.get("Exterior", "Nao") == "Sim"
-                cor    = "#1565C0" if is_ext else "#FF8000"
+                is_imp = r.get("Importacao", "Nao") == "Sim"
+                cor    = "#1565C0" if is_imp else "#FF8000"
                 with cols[idx]:
                     st.markdown(
                         f'<div class="cnpj-badge" style="color:{cor};border-color:{cor};">'
                         f'CNPJ: {r["CNPJ Empresa"]}</div>'
                         f'<div class="info-origem" style="border-left-color:{cor};">'
                         f'{r.get("Origem CNPJ","")}<br>'
-                        f'{"Importacao/Exterior" if is_ext else r.get("Destinatario","")[:60]}'
+                        f'{"Importacao — fornecedor: " + r.get("Destinatario","")[:50] if is_imp else r.get("Destinatario","")[:60]}'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
