@@ -3,11 +3,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V1.8"
+VERSAO = "V1.9"
 
-# ─────────────────────────────────────────────
-# TEMA
-# ─────────────────────────────────────────────
 def apply_tr_theme():
     st.markdown("""
         <style>
@@ -55,7 +52,6 @@ TABELA_GRUPOS = {
     100:"PRODUTOS NOVOS - ENTRADAS", 500:"PRODUTOS NOVOS - SAIDAS",
 }
 
-# Mapeamento CST entrada → CST saída (conforme CST DE-Para entrada e saida.xlsx)
 CST_ENTRADA_SAIDA = {
     "50": "01", "51": "02", "52": "08",
     "73": "06", "74": "08", "70": "04", "99": "49",
@@ -141,9 +137,6 @@ def detectar_grupo(cfop: str, ncm: str, grupo_padrao: int) -> int:
         return g2 if g2 != 1 else g
     return g
 
-# ─────────────────────────────────────────────
-# DETECÇÃO SE É IMPORTAÇÃO
-# ─────────────────────────────────────────────
 def is_nota_importacao(nfe_root) -> bool:
     dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     if dest is not None:
@@ -157,9 +150,6 @@ def is_nota_importacao(nfe_root) -> bool:
             return True
     return False
 
-# ─────────────────────────────────────────────
-# EXTRAÇÃO CNPJ DESTINATÁRIO
-# ─────────────────────────────────────────────
 def extrair_cnpj_dest(nfe_root) -> tuple:
     dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     if dest is not None:
@@ -201,10 +191,7 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
 # ─────────────────────────────────────────────
-# REGISTRO 0020 – Cadastro de Fornecedores
-# V1.8: importação → dados do <dest> (fornecedor estrangeiro)
-#        doméstica  → dados do <emit>
-#        campo 4    → xFant ou primeiros 40 chars da razão
+# REGISTRO 0020
 # ─────────────────────────────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
@@ -252,14 +239,18 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     ])
 
 # ─────────────────────────────────────────────
-# EXTRAIR DADOS PIS/COFINS DE UM ITEM
-# Retorna dict com cst_e, aliq_pis_e, aliq_cof_e, cst_s, aliq_pis_s, aliq_cof_s
+# EXTRAIR PIS/COFINS E cClassTrib DE UM ITEM
 # ─────────────────────────────────────────────
 def extrair_pis_cofins(det) -> dict:
+    """
+    Extrai CST, alíquotas PIS/COFINS e cClassTrib IBS/CBS de cada item.
+    cClassTrib é lido da tag <IBSCBS><cClassTrib> do XML. ← V1.9
+    """
     imposto = det.find("nfe:imposto", NS)
     resultado = {
         "cst_e": "", "aliq_pis_e": "", "aliq_cof_e": "",
         "cst_s": "", "aliq_pis_s": "", "aliq_cof_s": "",
+        "class_trib": "",  # ← V1.9: lido do XML
     }
     if imposto is None:
         return resultado
@@ -283,18 +274,20 @@ def extrair_pis_cofins(det) -> dict:
                 resultado["aliq_cof_e"] = fmt_decimal(get_text(cn, "nfe:pCOFINS"), 4)
                 break
 
-    # CST saída = mapeamento do CST entrada
-    cst_e = resultado["cst_e"]
-    resultado["cst_s"]      = CST_ENTRADA_SAIDA.get(cst_e, "")
+    # CST saída via DE-PARA
+    resultado["cst_s"]      = CST_ENTRADA_SAIDA.get(resultado["cst_e"], "")
     resultado["aliq_pis_s"] = resultado["aliq_pis_e"]
     resultado["aliq_cof_s"] = resultado["aliq_cof_e"]
+
+    # ── V1.9: cClassTrib lido da tag <IBSCBS><cClassTrib> ──────────
+    ibs_node = imposto.find("nfe:IBSCBS", NS)
+    if ibs_node is not None:
+        resultado["class_trib"] = get_text(ibs_node, "nfe:cClassTrib")
 
     return resultado
 
 # ─────────────────────────────────────────────
 # REGISTRO 0100 – Cadastro de produtos (91 campos)
-# V1.8: campo 24 = "M" (Periodicidade IPI)
-#        pad automático garante 92 posições
 # ─────────────────────────────────────────────
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
@@ -336,87 +329,87 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         "",                       # 8  - Cod. imposto importacao (Numerico)
         cod_grupo,                # 9  - Grupo (Numerico)
         unidade,                  # 10 - Unidade
-        "N",                      # 11 - Unidade inventaria diferente
+        "N",                      # 11
         "O",                      # 12 - Tipo produto
-        "",                       # 13 - Tipo arma (Numerico)
-        "",                       # 14 - Descricao arma
-        "",                       # 15 - Tipo medicamento (Numerico)
+        "",                       # 13
+        "",                       # 14
+        "",                       # 15
         "N",                      # 16 - ISSQN
-        "",                       # 17 - Chassi
+        "",                       # 17
         fmt_decimal(val_unit, 3), # 18 - Valor unitario (3 casas)
-        "",                       # 19 - Qtd inicial estoque
-        "",                       # 20 - Valor inicial estoque
+        "",                       # 19
+        "",                       # 20
         cst_icms,                 # 21 - CST ICMS (Numerico)
         aliq_icms,                # 22 - Aliq. ICMS (2 casas)
         aliq_ipi,                 # 23 - Aliq. IPI (2 casas)
-        "M",                      # 24 - Periodicidade IPI ← V1.8 fixo "M"
-        "",                       # 25 - Observacao
-        "N",                      # 26 - Exporta DNF
-        "",                       # 27 - Ex TIPI
-        "",                       # 28 - DNF especie (Numerico)
-        "",                       # 29 - DNF unidade (Numerico)
-        "",                       # 30 - DNF fator conversao
-        "",                       # 31 - DNF cod produto (Numerico)
-        "",                       # 32 - DNF cap. volumetrica (Numerico)
-        "",                       # 33 - SE/DIC EAN
-        "",                       # 34 - SE/DIC cod produto (Numerico)
-        "N",                      # 35 - SCANC
-        "",                       # 36 - SCANC cod produto (Numerico)
-        "",                       # 37 - SCANC gasolina A
-        "",                       # 38 - SCANC tipo produto
-        "N",                      # 39 - GRF
-        "",                       # 40 - GRF cod produto (Numerico)
-        "",                       # 41 - DIEF unidade
-        "",                       # 42 - DIEF tipo produto (Numerico)
-        "N",                      # 43 - 88ST
-        "",                       # 44 - 88ST cod produto (Numerico)
-        "",                       # 45 - GO complementar IPM
-        "",                       # 46 - GO cod produto IPM (Numerico)
-        "N",                      # 47 - GO produto relacionado
-        "N",                      # 48 - AM cesta basica
-        "",                       # 49 - AM cod produto DAM (Numerico)
-        "",                       # 50 - RS produto incluido ST
-        "",                       # 51 - RS data inicio ST (Data)
-        "",                       # 52 - RS produto preco tabelado
-        "",                       # 53 - RS valor unitario ST (Decimal 2)
-        "",                       # 54 - RS MVA ST (Decimal 2) ← NAO "N"
-        "",                       # 55 - RS grupo ST (Numerico)
-        "N",                      # 56 - PR equipamento ECF
-        "",                       # 57 - MS incentivo fiscal (Numerico)
-        "",                       # 58 - DF regime especial (Numerico)
-        "",                       # 59 - DF item padrao regime (Numerico)
-        "",                       # 60 - PE tipo produto (Numerico)
-        "N",                      # 61 - SP Cat 17/99
-        "",                       # 62 - SP data saldo inicial (Data)
-        "",                       # 63 - SP valor unitario (3 casas)
-        "",                       # 64 - SP quantidade (3 casas)
-        "",                       # 65 - SP valor final (2 casas)
-        "",                       # 66 - SPED genero (Numerico)
-        "",                       # 67 - SPED cod servico (Numerico)
-        "",                       # 68 - SPED tipo item (Numerico)
-        "",                       # 69 - SPED classificacao (Numerico)
-        "",                       # 70 - SPED conta em seu poder (Numerico)
-        "",                       # 71 - SPED conta terceiros (Numerico)
-        "",                       # 72 - SPED conta de terceiros (Numerico)
-        "",                       # 73 - SPED tipo receita
-        "",                       # 74 - SPED energia (Numerico)
-        "",                       # 75 - Data cadastro (Data)
-        "N",                      # 76 - LMC
-        "",                       # 77 - Cod combustivel DF
-        "",                       # 78 - Cod combustivel ANP
-        "N",                      # 79 - MP 540
-        "",                       # 80 - Desc complementar
-        "",                       # 81 - INSS folha
-        "",                       # 82 - DACON tipo produto
-        "",                       # 83 - DACON credito presumido (Numerico)
-        "",                       # 84 - Desconsiderar (Numerico)
-        "",                       # 85 - SPED bloco K em processo (Numerico)
-        "",                       # 86 - SPED bloco K hist processo (Numerico)
-        "",                       # 87 - SPED bloco K acabado (Numerico)
-        "",                       # 88 - SPED bloco K hist acabado (Numerico)
+        "M",                      # 24 - Periodicidade IPI ← fixo "M"
+        "",                       # 25
+        "N",                      # 26
+        "",                       # 27
+        "",                       # 28
+        "",                       # 29
+        "",                       # 30
+        "",                       # 31
+        "",                       # 32
+        "",                       # 33
+        "",                       # 34
+        "N",                      # 35
+        "",                       # 36
+        "",                       # 37
+        "",                       # 38
+        "N",                      # 39
+        "",                       # 40
+        "",                       # 41
+        "",                       # 42
+        "N",                      # 43
+        "",                       # 44
+        "",                       # 45
+        "",                       # 46
+        "N",                      # 47
+        "N",                      # 48
+        "",                       # 49
+        "",                       # 50
+        "",                       # 51
+        "",                       # 52
+        "",                       # 53
+        "",                       # 54 - RS MVA ST ← NAO "N"
+        "",                       # 55
+        "N",                      # 56
+        "",                       # 57
+        "",                       # 58
+        "",                       # 59
+        "",                       # 60
+        "N",                      # 61
+        "",                       # 62
+        "",                       # 63
+        "",                       # 64
+        "",                       # 65
+        "",                       # 66
+        "",                       # 67
+        "",                       # 68
+        "",                       # 69
+        "",                       # 70
+        "",                       # 71
+        "",                       # 72
+        "",                       # 73
+        "",                       # 74
+        "",                       # 75
+        "N",                      # 76
+        "",                       # 77
+        "",                       # 78
+        "N",                      # 79
+        "",                       # 80
+        "",                       # 81
+        "",                       # 82
+        "",                       # 83
+        "",                       # 84
+        "",                       # 85
+        "",                       # 86
+        "",                       # 87
+        "",                       # 88
         cest,                     # 89 - CEST (Numerico)
-        "",                       # 90 - RE (Numerico)
-        "",                       # 91 - Identificador
+        "",                       # 90
+        "",                       # 91
     ]
 
     while len(campos) < 92:
@@ -426,44 +419,39 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
 
 # ─────────────────────────────────────────────
 # REGISTRO 0110 – Vigência do produto (filho do 0100)
-# V1.8: preenche PIS/COFINS entrada E saída lidos do XML
-#
-# Campos relevantes:
-#   3  = CST Entrada (PIS/COFINS)
-#   8  = Alíquota PIS Entrada (4 casas)
-#   9  = Alíquota COFINS Entrada (4 casas)
-#   16 = CST Saída (mapeado via DE-PARA)
-#   17 = Tipo de contribuição (N=Não cumulativo)
-#   22 = Alíquota PIS Saída (4 casas)
-#   23 = Alíquota COFINS Saída (4 casas)
+# V1.9:
+#   Campo 2  (Descrição)   → fixo "Inicial" ← V1.9
+#   Campo 67 (IBS cClassTrib) → lido de <IBSCBS><cClassTrib> ← V1.9
+#   Campo 68 (CBS cClassTrib) → mesmo valor ← V1.9
 # ─────────────────────────────────────────────
 def gerar_registro_0110(det) -> str:
     pc = extrair_pis_cofins(det)
+    class_trib = pc["class_trib"]  # ← V1.9: lido do XML
 
     campos = [
         "0110",             # 1  - Identificacao
-        "",                 # 2  - Descricao vigencia
+        "Inicial",          # 2  - Descricao vigencia ← V1.9 fixo "Inicial"
         pc["cst_e"],        # 3  - CST Entrada (Numerico)
         "",                 # 4  - Vinculo do credito (Numerico)
-        "01",               # 5  - Base do credito (01=Aquisicao bens revenda)
+        "01",               # 5  - Base do credito
         "N",                # 6  - Aproveitar credito prop. somente receita nao cum.
         "N",                # 7  - Credito por aliquota diferenciada - Entradas
-        pc["aliq_pis_e"],   # 8  - Aliquota PIS Entrada (4 casas) ← V1.8
-        pc["aliq_cof_e"],   # 9  - Aliquota COFINS Entrada (4 casas) ← V1.8
+        pc["aliq_pis_e"],   # 8  - Aliquota PIS Entrada (4 casas)
+        pc["aliq_cof_e"],   # 9  - Aliquota COFINS Entrada (4 casas)
         "N",                # 10 - Credito por unidade de medida - Entradas
         "N",                # 11 - Unidade tributada diferente inventariada - Entradas
         "",                 # 12 - Unidade tributavel - Entradas
         "",                 # 13 - Fator de conversao - Entradas (6 casas)
         "",                 # 14 - Valor PIS - Entradas (4 casas)
         "",                 # 15 - Valor COFINS - Entradas (4 casas)
-        pc["cst_s"],        # 16 - CST Saida (Numerico) ← V1.8 mapeado via DE-PARA
+        pc["cst_s"],        # 16 - CST Saida (Numerico)
         "N",                # 17 - Tipo de contribuicao (N=Nao cumulativo)
         "",                 # 18 - Natureza de receita (Numerico)
         "",                 # 19 - Cod. recolhimento PIS Saida
         "",                 # 20 - Cod. recolhimento COFINS Saida
         "N",                # 21 - Debito por aliquota diferenciada - Saidas
-        pc["aliq_pis_s"],   # 22 - Aliquota PIS Saida (4 casas) ← V1.8
-        pc["aliq_cof_s"],   # 23 - Aliquota COFINS Saida (4 casas) ← V1.8
+        pc["aliq_pis_s"],   # 22 - Aliquota PIS Saida (4 casas)
+        pc["aliq_cof_s"],   # 23 - Aliquota COFINS Saida (4 casas)
         "N",                # 24 - Debito por unidade de medida - Saidas
         "N",                # 25 - Unidade tributada diferente inventariada - Saidas
         "",                 # 26 - Unidade tributavel - Saidas
@@ -507,8 +495,8 @@ def gerar_registro_0110(det) -> str:
         "N",                # 64 - RS PMPF combustiveis
         "N",                # 65 - ES beneficio fiscal atacadista saidas interestaduais
         "N",                # 66 - ES beneficio fiscal atacadista saidas internas
-        "",                 # 67 - IBS cClassTrib
-        "",                 # 68 - CBS cClassTrib
+        class_trib,         # 67 - IBS cClassTrib ← V1.9 lido do XML
+        class_trib,         # 68 - CBS cClassTrib ← V1.9 mesmo valor
         "N",                # 69 - IBS utiliza tabela NCM/NBS
         "N",                # 70 - CBS utiliza tabela NCM/NBS
     ]
@@ -962,7 +950,6 @@ def converter_xml(
             cod = get_text(det.find("nfe:prod", NS), "nfe:cProd")
             if cod not in produtos_gerados:
                 lines.append(gerar_registro_0100(det, grupo_padrao=grupo_padrao))
-                # 0110 = filho do 0100 ← V1.8
                 if incluir_0110:
                     lines.append(gerar_registro_0110(det))
                 produtos_gerados.add(cod)
@@ -987,7 +974,7 @@ def converter_xml(
         if r1097:
             lines.append(r1097)
 
-    # IBS/CBS
+    # IBS/CBS agrupados por cClassTrib
     ibs_gerados = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1083,26 +1070,21 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>Novidades V1.8</h4>
+        <h4>Novidades V1.9</h4>
         <ul>
-          <li><b>0110 - Vigencia PIS/COFINS</b> (filho do 0100):
-            <ul>
-              <li>Campo 3 (CST Entrada): lido da tag <code>&lt;PIS&gt;</code> do XML</li>
-              <li>Campo 8 (Aliq. PIS Entrada 4 casas): lido de <code>&lt;pPIS&gt;</code></li>
-              <li>Campo 9 (Aliq. COFINS Entrada 4 casas): lido de <code>&lt;pCOFINS&gt;</code></li>
-              <li>Campo 16 (CST Saida): mapeado via tabela DE-PARA (ex: CST 50 → 01)</li>
-              <li>Campo 22 (Aliq. PIS Saida): igual à entrada</li>
-              <li>Campo 23 (Aliq. COFINS Saida): igual à entrada</li>
-            </ul>
-          </li>
+          <li><b>0110 campo 2 (Descricao)</b>: fixo <code>Inicial</code></li>
+          <li><b>0110 campo 67 (IBS cClassTrib)</b>: lido da tag XML
+              <code>&lt;IBSCBS&gt;&lt;cClassTrib&gt;</code> de cada produto
+              (ex: <code>000001</code>)</li>
+          <li><b>0110 campo 68 (CBS cClassTrib)</b>: mesmo valor do campo 67</li>
         </ul>
         <h4>Historico</h4>
         <ul>
+          <li>V1.8 — 0110 PIS/COFINS entrada e saida; CST DE-PARA</li>
           <li>V1.7b — 0020 campo 4 = xFant ou primeiros 40 chars da razao</li>
           <li>V1.7  — 0020 importacao = dados do &lt;dest&gt; (HILLROM)</li>
           <li>V1.6  — 1030 campo 98 = motDesICMS; 0100 campo 24 = M</li>
           <li>V1.5  — 0000 campo 2 = CNPJ destinataria; 0100 campo 54 = ""</li>
-          <li>V1.4  — 1030 campo 9 DI somente numeros; 1097 campo 19 cod IBGE</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
