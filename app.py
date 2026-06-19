@@ -453,18 +453,30 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         importacao: bool = False) -> str:
     ide   = nfe_root.find("nfe:infNFe/nfe:ide", NS)
     emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
+    dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
 
-    # Campo 3: SEMPRE CNPJ do emitente (valida chave NF-e)
-    cnpj_emit = get_text(emit, "nfe:CNPJ")
+    # ── Campo 3: Inscrição do fornecedor ─────────────────────────────
+    # Importação → fornecedor é o <dest> exterior (HILLROM)
+    #   idEstrangeiro se preenchido, senão nome truncado, senão vazio
+    # Nacional    → fornecedor é o <emit> (CNPJ do emitente)
+    if importacao and dest is not None:
+        id_ext    = get_text(dest, "nfe:idEstrangeiro").strip()
+        cnpj_forn = id_ext if id_ext else ""
+    else:
+        cnpj_forn = get_text(emit, "nfe:CNPJ")
 
-    # Campo 17: P=Próprio (emissão própria/importação) | T=Terceiros
+    # ── Campo 17: P=Próprio (importação) / T=Terceiros (nacional) ────
     emitente_nf = "P" if importacao else "T"
+
+    # ── Campo 44: IE do fornecedor ────────────────────────────────────
+    # Importação → vazio (exterior não tem IE)
+    # Nacional   → IE do emitente
+    ie_forn = "" if importacao else get_text(emit, "nfe:IE")
 
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
     dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
-    ie_emit  = get_text(emit, "nfe:IE")
     c_mun_fg = get_text(ide, "nfe:cMunFG")
 
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
@@ -506,104 +518,15 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
             n_di = get_text(di_node, "nfe:nDI")
 
     return pipe_join([
-        "1000",        # 1  - Fixo
-        especie,       # 2  - Código espécie
-        cnpj_emit,     # 3  - Inscrição fornecedor (CNPJ emit — valida chave)
-        "",            # 4  - Cód. exclusão DIEF
-        acumulador,    # 5  - Cód. acumulador
-        cfop_first,    # 6  - CFOP
-        "",            # 7  - Segmento
-        nNF,           # 8  - Número documento
-        serie,         # 9  - Série
-        "",            # 10 - Número final
-        dhEmi,         # 11 - Data entrada
-        dhEmi,         # 12 - Data emissão
-        v_nf,          # 13 - Valor contábil (vNF do XML)
-        "",            # 14 - Valor exclusão DIEF
-        obs_fisco,     # 15 - Observação
-        mod_frete,     # 16 - Modalidade frete
-        emitente_nf,   # 17 - Emitente: P=Próprio / T=Terceiros ← CORRIGIDO
-        "",            # 18 - CFOP estendido SE
-        "",            # 19 - Cód. transferência crédito RS
-        "",            # 20 - Cód. recolhimento ISS
-        "",            # 21 - Cód. recolhimento IRRF
-        "",            # 22 - Cód. observação
-        "",            # 23 - Data visto MG
-        "",            # 24 - Fato gerador CRF
-        "",            # 25 - Fato gerador IRRF
-        v_frete,       # 26 - Valor frete
-        v_seg,         # 27 - Valor seguro
-        v_outro,       # 28 - Valor despesas
-        v_pis,         # 29 - Valor PIS
-        "",            # 30 - Cód. antecipação tributária
-        v_cofins,      # 31 - Valor COFINS
-        "",            # 32 - Valor DARE SE
-        "",            # 33 - Alíquota DARE SE
-        "",            # 34 - Base ICMS ST
-        "",            # 35 - Entradas isentas MG
-        "",            # 36 - Outras entradas isentas MG
-        "",            # 37 - Valor transporte MG
-        "",            # 38 - Cód. ressarcimento
-        v_prod,        # 39 - Valor produtos
-        c_mun_fg,      # 40 - Município origem
-        "0",           # 41 - Situação nota (0=Regular)
-        "",            # 42 - CST
-        "",            # 43 - Sub série
-        ie_emit,       # 44 - IE fornecedor
-        "",            # 45 - IM fornecedor
-        "",            # 46 - Cód. operação
-        "",            # 47 - Valor dedução
-        "",            # 48 - Competência
-        "",            # 49 - Operação PA
-        "",            # 50 - Nº parecer fiscal
-        "",            # 51 - Data parecer fiscal
-        n_di,          # 52 - Nº declaração importação
-        "N",           # 53 - Possui benefício fiscal
-        chave,         # 54 - Chave NF-e
-        "",            # 55 - Cód. FETHAB
-        "",            # 56 - Resp. FETHAB
-        "",            # 57 - CFOP documento fiscal
-        "",            # 58 - Tipo CT-e
-        "",            # 59 - CT-e referência
-        "",            # 60 - Modalidade importação
-        "",            # 61 - Cód. inf. complementar
-        "",            # 62 - Informação complementar
-        "",            # 63 - Classe consumo
-        "",            # 64 - Tipo ligação
-        "",            # 65 - Grupo tensão
-        "",            # 66 - Tipo assinante
-        "",            # 67 - KWH consumido
-        "",            # 68 - Valor fornecido
-        "",            # 69 - Valor cobrado terceiros
-        "",            # 70 - Tipo doc. importação
-        "",            # 71 - Ato concessório Drawback
-        "",            # 72 - Natureza frete PIS/COFINS
-        "",            # 73 - CST PIS/COFINS
-        "",            # 74 - Base crédito PIS/COFINS
-        "",            # 75 - Valor serviços PIS/COFINS
-        "",            # 76 - Base cálculo PIS/COFINS
-        "",            # 77 - Alíquota PIS
-        "",            # 78 - Alíquota COFINS
-        "",            # 79 - Chave NFSe
-        "",            # 80 - Nº processo
-        "",            # 81 - Origem processo
-        "",            # 82 - Data escrituração
-        "",            # 83 - CFPS DF
-        "",            # 84 - Natureza receita PIS/COFINS
-        "",            # 85 - CST IPI
-        "",            # 86 - Lançamentos SCP
-        "",            # 87 - Tipo serviço
-        "",            # 88 - Município destino
-        "",            # 89 - Pedágio
-        v_ipi,         # 90 - IPI
-        v_st,          # 91 - ICMS ST
-        "",            # 92 - Classificação EFD-Reinf
-        "",            # 93 - Indicativo EFD-Reinf
-        "",            # 94 - Nº doc. arrecadação RS
-        "",            # 95 - Tipo título
-        "",            # 96 - Identificação
-        v_icms_d,      # 97 - ICMS Desonerado
-        "",            # 98 - IPI Devolução
+        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "",
+        nNF, serie, "", dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete,
+        emitente_nf,
+        "", "", "", "", "", "", "", "", v_frete, v_seg, v_outro, v_pis, "",
+        v_cofins, "", "", "", "", "", "", "", v_prod, c_mun_fg, "0", "", "",
+        ie_forn, "", "", "", "", "", "", "", n_di, "N", chave, "", "", "", "",
+        "", "1", "", "", "", "", "", "", "", "", "", "", "10", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", v_ipi, v_st,
+        "", "", "", "", "", v_icms_d, "",
     ])
 
 # ─────────────────────────────────────────────
