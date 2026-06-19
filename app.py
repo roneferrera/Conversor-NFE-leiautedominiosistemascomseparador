@@ -5,10 +5,10 @@ from datetime import datetime
 # ─────────────────────────────────────────────
 # VERSÃO
 # ─────────────────────────────────────────────
-VERSAO = "V1.0"
+VERSAO = "V1.1"
 
 # ─────────────────────────────────────────────
-# TEMA THOMSON REUTERS (idêntico ao RPA V3.9)
+# TEMA THOMSON REUTERS
 # ─────────────────────────────────────────────
 def apply_tr_theme():
     st.markdown("""
@@ -76,6 +76,26 @@ def apply_tr_theme():
         .instrucoes-box h4:first-child {
             margin-top: 0;
         }
+        .cnpj-badge {
+            background-color: #444444;
+            color: #FF8000;
+            border: 1px solid #FF8000;
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-family: Consolas, monospace;
+            font-size: 13px;
+            display: inline-block;
+            margin: 4px 0;
+        }
+        .info-origem {
+            background-color: #FFF3E0;
+            border-left: 3px solid #FF8000;
+            border-radius: 3px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: #444444;
+            margin: 6px 0;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -92,7 +112,7 @@ st.set_page_config(
 apply_tr_theme()
 
 # ─────────────────────────────────────────────
-# CABEÇALHO THOMSON REUTERS
+# CABEÇALHO
 # ─────────────────────────────────────────────
 st.markdown(
     f"""
@@ -104,6 +124,7 @@ st.markdown(
         <p style="color:#DDDDDD; margin:6px 0 0 0; font-family:'Segoe UI',Arial,sans-serif;">
             Converte arquivos XML de NF-e para o leiaute padrão de importação do
             <strong>Domínio Sistemas</strong>. Saída em <strong>ANSI (Latin-1)</strong>.
+            O CNPJ da empresa é lido automaticamente do XML (<code>&lt;dest&gt;</code>).
         </p>
     </div>
     """,
@@ -116,7 +137,7 @@ st.markdown(
 NS = {"nfe": "http://www.portalfiscal.inf.br/nfe"}
 
 # ─────────────────────────────────────────────
-# TABELA DE IMPOSTOS – conforme Impostos.xls
+# TABELA DE IMPOSTOS – Impostos.xls
 # ─────────────────────────────────────────────
 TABELA_IMPOSTOS = {
     1:   "ICMS",
@@ -323,16 +344,52 @@ def encode_ansi(conteudo: str) -> bytes:
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 0000 – Identificação da empresa
-# Campos: 1=Identificação(fixo 0000), 2=Inscrição
+# EXTRAÇÃO DO CNPJ DESTINATÁRIO DO XML
+# Prioridade: dest/CNPJ → dest/CPF → dest/idEstrangeiro
+# Fallback: campo manual da sidebar
+# ─────────────────────────────────────────────
+def extrair_cnpj_dest(nfe_root) -> tuple:
+    """
+    Retorna (cnpj_str, origem_str).
+    origem pode ser: 'XML - dest/CNPJ', 'XML - dest/CPF',
+                     'XML - dest/idEstrangeiro', 'Manual'
+    """
+    dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
+    if dest is not None:
+        # Tenta CNPJ
+        cnpj = get_text(dest, "nfe:CNPJ")
+        if cnpj:
+            return cnpj, "XML — <dest><CNPJ>"
+
+        # Tenta CPF (pessoa física)
+        cpf = get_text(dest, "nfe:CPF")
+        if cpf:
+            return cpf, "XML — <dest><CPF>"
+
+        # Tenta idEstrangeiro (exportação)
+        id_ext = get_text(dest, "nfe:idEstrangeiro")
+        if id_ext:
+            return id_ext, "XML — <dest><idEstrangeiro>"
+
+    return "", "Não encontrado no XML"
+
+
+def extrair_nome_dest(nfe_root) -> str:
+    dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
+    if dest is not None:
+        return get_text(dest, "nfe:xNome")
+    return ""
+
+
+# ─────────────────────────────────────────────
+# REGISTRO 0000
 # ─────────────────────────────────────────────
 def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 0020 – Cadastro de fornecedores
-# 33 campos conforme leiaute oficial
+# REGISTRO 0020 – Cadastro de fornecedor (33 campos)
 # ─────────────────────────────────────────────
 def gerar_registro_0020(emit) -> str:
     cnpj        = get_text(emit, "nfe:CNPJ")
@@ -349,54 +406,19 @@ def gerar_registro_0020(emit) -> str:
     ie          = get_text(emit, "nfe:IE")
     crt         = get_text(emit, "nfe:CRT")
 
-    # Campo 24 - Regime de apuração
-    regime_map = {"1": "M", "2": "E", "3": "N"}
-    regime = regime_map.get(crt, "N")
-
-    # Campo 25 - Contribuinte ICMS
+    regime_map   = {"1": "M", "2": "E", "3": "N"}
+    regime       = regime_map.get(crt, "N")
     contrib_icms = "S" if ie and ie.upper() not in ("ISENTO", "NAO CONTRIBUINTE", "") else "N"
 
-    fields = [
-        "0020",       # 1  - Identificação do registro
-        cnpj,         # 2  - Inscrição
-        razao,        # 3  - Razão Social
-        fantasia,     # 4  - Apelido
-        logradouro,   # 5  - Endereço
-        numero,       # 6  - Número do endereço
-        complemento,  # 7  - Complemento
-        bairro,       # 8  - Bairro
-        cod_mun,      # 9  - Código do município
-        uf,           # 10 - UF
-        "",           # 11 - Código do País (só exterior)
-        cep,          # 12 - CEP
-        ie,           # 13 - Inscrição Estadual
-        "",           # 14 - Inscrição Municipal
-        "",           # 15 - Inscrição Suframa
-        "",           # 16 - DDD
-        "",           # 17 - Telefone
-        "",           # 18 - FAX
-        "",           # 19 - Data do cadastro
-        "",           # 20 - Conta contábil
-        "",           # 21 - Conta contábil cliente
-        "N",          # 22 - Agropecuário
-        "7",          # 23 - Natureza jurídica (7=Empresa Privada)
-        regime,       # 24 - Regime de apuração
-        contrib_icms, # 25 - Contribuinte ICMS
-        "",           # 26 - Alíquota ICMS
-        "",           # 27 - Categoria do estabelecimento
-        "",           # 28 - Inscrição Estadual ST
-        "",           # 29 - Email
-        "N",          # 30 - Interdependência com a empresa
-        "N",          # 31 - Contribuinte da CPRB
-        "",           # 32 - Processo administrativo/judicial
-        "",           # 33 - Tipo Inscrição
-    ]
-    return pipe_join(fields)
+    return pipe_join([
+        "0020", cnpj, razao, fantasia, logradouro, numero, complemento,
+        bairro, cod_mun, uf, "", cep, ie, "", "", "", "", "", "", "", "",
+        "N", "7", regime, contrib_icms, "", "", "", "", "N", "N", "", "",
+    ])
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 0100 – Cadastro de produtos
-# 91 campos conforme leiaute oficial
+# REGISTRO 0100 – Cadastro de produtos (91 campos)
 # ─────────────────────────────────────────────
 def gerar_registro_0100(det) -> str:
     prod      = det.find("nfe:prod", NS)
@@ -413,142 +435,51 @@ def gerar_registro_0100(det) -> str:
     aliq_ipi  = ""
 
     if imposto is not None:
-        icms_node = None
         for icms_type in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40",
                           "ICMS51","ICMS60","ICMS70","ICMS90","ICMSSN101",
                           "ICMSSN102","ICMSSN201","ICMSSN202","ICMSSN500","ICMSSN900"]:
             node = imposto.find(f"nfe:ICMS/nfe:{icms_type}", NS)
             if node is not None:
-                icms_node = node
+                cst_icms  = get_text(node, "nfe:CST") or get_text(node, "nfe:CSOSN")
+                aliq_icms = fmt_decimal(get_text(node, "nfe:pICMS"))
                 break
-        if icms_node is not None:
-            cst_icms  = get_text(icms_node, "nfe:CST") or get_text(icms_node, "nfe:CSOSN")
-            aliq_icms = fmt_decimal(get_text(icms_node, "nfe:pICMS"))
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
 
-    fields = [
-        "0100",                   # 1  - Identificação do registro
-        cod_prod,                 # 2  - Código do produto
-        descricao,                # 3  - Descrição do produto
-        "",                       # 4  - Código NBM
-        ncm,                      # 5  - Código NCM
-        "",                       # 6  - Código NCM Exterior
-        "",                       # 7  - Código de barras
-        "",                       # 8  - Código do imposto de importação
-        "",                       # 9  - Código do grupo de produtos
-        unidade,                  # 10 - Unidade de medida
-        "N",                      # 11 - Unidade inventária diferente
-        "O",                      # 12 - Tipo do produto (O=Outros)
-        "",                       # 13 - Tipo da arma de fogo
-        "",                       # 14 - Descrição da arma de fogo
-        "",                       # 15 - Tipo de medicamento
-        "N",                      # 16 - Serviço tributado pelo ISSQN
-        "",                       # 17 - Código do chassi do veículo
-        fmt_decimal(val_unit, 3), # 18 - Valor unitário (3 casas)
-        "",                       # 19 - Quantidade inicial em estoque
-        "",                       # 20 - Valor inicial em estoque
-        cst_icms,                 # 21 - CST ICMS
-        aliq_icms,                # 22 - Alíquota do ICMS
-        aliq_ipi,                 # 23 - Alíquota do IPI
-        "",                       # 24 - Periodicidade do IPI
-        "",                       # 25 - Observação
-        "N",                      # 26 - Exporta produto para DNF
-        "",                       # 27 - Ex TIPI
-        "",                       # 28 - DNF – Código da espécie
-        "",                       # 29 - DNF – Unidade de medida padrão
-        "",                       # 30 - DNF – Fator de conversão
-        "",                       # 31 - DNF – Código do produto
-        "",                       # 32 - DNF – Capacidade Volumétrica
-        "",                       # 33 - SE/DIC – Código EAN
-        "",                       # 34 - SE/DIC – Código do produto relevante
-        "N",                      # 35 - SCANC – Gerar para o SCANC
-        "",                       # 36 - SCANC – Código do produto
-        "",                       # 37 - SCANC – Contém gasolina A
-        "",                       # 38 - SCANC – Tipo de produto
-        "N",                      # 39 - GRF – CTB – Gera para o GRF
-        "",                       # 40 - GRF – CTB – Código do produto
-        "",                       # 41 - DIEF – Unidade
-        "",                       # 42 - DIEF – Tipo de produto/serviço
-        "N",                      # 43 - 88ST – Informa registro 88ST
-        "",                       # 44 - 88ST – Código do produto
-        "",                       # 45 - GO – Informações complementares IPM
-        "",                       # 46 - GO – Código do produto/serviço IPM
-        "N",                      # 47 - GO – Produto relacionado
-        "N",                      # 48 - AM – Cesta básica
-        "",                       # 49 - AM – Código do produto na DAM
-        "",                       # 50 - RS – Produto incluído ST
-        "",                       # 51 - RS – Data início ST
-        "",                       # 52 - RS – Produto com preço tabelado
-        "",                       # 53 - RS – Valor unitário ST
-        "",                       # 54 - RS – MVA ST
-        "",                       # 55 - RS – Grupo ST
-        "N",                      # 56 - PR – Equipamento ECF
-        "",                       # 57 - MS – Possui incentivo fiscal
-        "",                       # 58 - DF – Produto sujeito regime especial
-        "",                       # 59 - DF – Item padrão regime especial
-        "",                       # 60 - PE – Tipo do produto
-        "N",                      # 61 - SP – Controla ressarcimento Cat 17/99
-        "",                       # 62 - SP – Data saldo inicial Cat 17/99
-        "",                       # 63 - SP – Valor unitário Cat 17/99
-        "",                       # 64 - SP – Quantidade Cat 17/99
-        "",                       # 65 - SP – Valor final Cat 17/99
-        "",                       # 66 - SPED – Gênero
-        "",                       # 67 - SPED – Código do Serviço
-        "",                       # 68 - SPED – Tipo do item
-        "",                       # 69 - SPED – Classificação
-        "",                       # 70 - SPED – Conta Contábil em seu poder
-        "",                       # 71 - SPED – Conta Contábil em poder de terceiros
-        "",                       # 72 - SPED – Conta Contábil de terceiros em seu poder
-        "",                       # 73 - SPED – Tipo de receita
-        "",                       # 74 - SPED – Energia elétrica/Gás
-        "",                       # 75 - Data do cadastro
-        "N",                      # 76 - Produto escriturado no LMC
-        "",                       # 77 - Código combustível DF
-        "",                       # 78 - Código combustível ANP
-        "N",                      # 79 - Produto relacionado MP 540
-        "",                       # 80 - Permitir descrição complementar
-        "",                       # 81 - Código de atividade INSS Folha
-        "",                       # 82 - DACON – Tipo do Produto
-        "",                       # 83 - DACON – Crédito Presumido
-        "",                       # 84 - Desconsiderar
-        "",                       # 85 - SPED – Conta Contábil em processo
-        "",                       # 86 - SPED – Conta Contábil histórico em processo
-        "",                       # 87 - SPED – Conta Contábil acabado
-        "",                       # 88 - SPED – Conta Contábil histórico acabado
-        cest,                     # 89 - Código CEST
-        "",                       # 90 - Registro de Exportação (RE)
-        "",                       # 91 - Identificador
-    ]
-    return pipe_join(fields)
+    return pipe_join([
+        "0100", cod_prod, descricao, "", ncm, "", "", "", "", unidade,
+        "N", "O", "", "", "", "N", "", fmt_decimal(val_unit, 3), "", "",
+        cst_icms, aliq_icms, aliq_ipi, "", "", "N", "", "", "", "", "", "",
+        "", "", "N", "", "", "", "N", "", "", "", "N", "", "", "", "N", "",
+        "", "", "", "", "", "", "N", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "N", "", "", "N", "", "",
+        "", "", "", "", "", "", "", "", "", "", cest, "", "",
+    ])
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 1000 – Nota Fiscal de Entrada
-# 98 campos conforme leiaute oficial
+# REGISTRO 1000 – NF de Entrada (98 campos)
 # ─────────────────────────────────────────────
-def gerar_registro_1000(nfe_root, acumulador: str = "1157", especie: str = "36") -> str:
+def gerar_registro_1000(nfe_root, cnpj_empresa: str,
+                        acumulador: str = "1157",
+                        especie: str = "36") -> str:
     ide   = nfe_root.find("nfe:infNFe/nfe:ide", NS)
     emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
 
-    cnpj_emit = get_text(emit, "nfe:CNPJ")
-    nNF       = get_text(ide, "nfe:nNF")
-    serie     = get_text(ide, "nfe:serie")
-    dhEmi     = fmt_date(get_text(ide, "nfe:dhEmi"))
-    ie_emit   = get_text(emit, "nfe:IE")
+    cnpj_emit  = get_text(emit, "nfe:CNPJ")
+    nNF        = get_text(ide, "nfe:nNF")
+    serie      = get_text(ide, "nfe:serie")
+    dhEmi      = fmt_date(get_text(ide, "nfe:dhEmi"))
+    ie_emit    = get_text(emit, "nfe:IE")
+    c_mun_fg   = get_text(ide, "nfe:cMunFG")
 
-    # CFOP do primeiro item
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     cfop_first = ""
     if det_list:
         cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
 
-    # Município de origem (cMunFG da ide)
-    c_mun_fg = get_text(ide, "nfe:cMunFG")
-
-    # Valores totais
     v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
     v_pis    = fmt_decimal(get_text(total, "nfe:vPIS"))
     v_cofins = fmt_decimal(get_text(total, "nfe:vCOFINS"))
@@ -560,139 +491,43 @@ def gerar_registro_1000(nfe_root, acumulador: str = "1157", especie: str = "36")
     v_outro  = fmt_decimal(get_text(total, "nfe:vOutro"))
     v_icms_d = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
 
-    # Chave NF-e
-    inf_nfe = nfe_root.find("nfe:infNFe", NS)
-    chave   = ""
+    inf_nfe  = nfe_root.find("nfe:infNFe", NS)
+    chave    = ""
     if inf_nfe is not None:
         id_attr = inf_nfe.get("Id", "")
         chave   = id_attr.replace("NFe", "") if id_attr else ""
 
-    # Modalidade frete
     transp        = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     mod_frete_cod = get_text(transp, "nfe:modFrete")
     frete_map     = {"0": "C", "1": "F", "2": "S", "3": "T", "4": "R", "5": "D", "9": "S"}
     mod_frete     = frete_map.get(mod_frete_cod, "C")
 
-    # Observação fiscal (campo 15 - Observação de interesse do fisco)
     inf_adic  = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
     obs_fisco = ""
     if inf_adic is not None:
         obs_fisco = get_text(inf_adic, "nfe:infAdFisco")[:300]
 
-    # Número DI do primeiro item (campo 52)
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
 
-    fields = [
-        "1000",          # 1  - Identificação do registro
-        especie,         # 2  - Código da espécie (36=NF-e mod.55)
-        cnpj_emit,       # 3  - Inscrição fornecedor
-        "",              # 4  - Código de Exclusão da DIEF
-        acumulador,      # 5  - Código do acumulador (1157)
-        cfop_first,      # 6  - CFOP
-        "",              # 7  - Segmento
-        nNF,             # 8  - Número do documento
-        serie,           # 9  - Série
-        "",              # 10 - Número do documento final
-        dhEmi,           # 11 - Data da entrada (dd/mm/aaaa)
-        dhEmi,           # 12 - Data emissão (dd/mm/aaaa)
-        v_nf,            # 13 - Valor contábil (2 casas)
-        "",              # 14 - Valor da exclusão da DIEF
-        obs_fisco,       # 15 - Observação (interesse do fisco)
-        mod_frete,       # 16 - Modalidade do frete (C/F/S/T/R/D)
-        "T",             # 17 - Emitente da nota (T=Terceiros)
-        "",              # 18 - CFOP estendido (SE)
-        "",              # 19 - Código transferência de crédito (RS)
-        "",              # 20 - Código recolhimento ISS Retido
-        "",              # 21 - Código recolhimento IRRF
-        "",              # 22 - Código da observação
-        "",              # 23 - Data do visto (MG) dd/mm/aaaa
-        "",              # 24 - Fato gerador da CRF (E/P)
-        "",              # 25 - Fato gerador do IRRF (E/P)
-        v_frete,         # 26 - Valor do frete (2 casas)
-        v_seg,           # 27 - Valor do seguro (2 casas)
-        v_outro,         # 28 - Valor das despesas (2 casas)
-        v_pis,           # 29 - Valor do PIS (2 casas)
-        "",              # 30 - Código antecipação tributária
-        v_cofins,        # 31 - Valor do COFINS (2 casas)
-        "",              # 32 - Valor DARE (SE) (2 casas)
-        "",              # 33 - Alíquota DARE (SE) (2 casas)
-        "",              # 34 - Base cálculo ICMS ST
-        "",              # 35 - Entradas isentas saídas (MG) (2 casas)
-        "",              # 36 - Outras entradas isentas (MG) (2 casas)
-        "",              # 37 - Valor transporte base (MG) (2 casas)
-        "",              # 38 - Código de ressarcimento
-        v_prod,          # 39 - Valor produtos (2 casas)
-        c_mun_fg,        # 40 - Município Origem (cMunFG da ide)
-        "0",             # 41 - Situação da Nota (0=Documento Regular)
-        "",              # 42 - Código da situação tributária
-        "",              # 43 - Sub série
-        ie_emit,         # 44 - Inscrição estadual do fornecedor
-        "",              # 45 - Inscrição municipal do fornecedor
-        "",              # 46 - Código da operação e prestação
-        "",              # 47 - Valor deduzido da receita tributável (2 casas)
-        "",              # 48 - Competência (dd/mm/aaaa)
-        "",              # 49 - Operação (PA)
-        "",              # 50 - Número do parecer fiscal
-        "",              # 51 - Data do parecer fiscal (dd/mm/aaaa)
-        n_di,            # 52 - Número da declaração de Importação
-        "N",             # 53 - Possui benefício fiscal (S/N)
-        chave,           # 54 - Chave da nota fiscal eletrônica
-        "",              # 55 - Código recolhimento FETHAB
-        "",              # 56 - Responsável recolhimento FETHAB (E/C)
-        "",              # 57 - CFOP documento fiscal
-        "",              # 58 - Tipo de CT-e (0/1/2)
-        "",              # 59 - CT-e referência
-        "1",             # 60 - Modalidade da importação (1=Com direito a crédito)
-        "",              # 61 - Código da informação complementar
-        "",              # 62 - Informação complementar
-        "",              # 63 - Classe de consumo
-        "",              # 64 - Tipo de ligação
-        "",              # 65 - Grupo de tensão
-        "",              # 66 - Tipo de assinante
-        "",              # 67 - KWH consumido
-        "",              # 68 - Valor fornecido energia/gás (2 casas)
-        "",              # 69 - Valor cobrado de terceiros (2 casas)
-        "10",            # 70 - Tipo doc importação (10=DI / 1=DSI)
-        "",              # 71 - Número Ato Concessório Drawback
-        "",              # 72 - Natureza do frete PIS/COFINS
-        "",              # 73 - CST PIS/COFINS
-        "",              # 74 - Base do crédito PIS/COFINS
-        "",              # 75 - Valor serviços/itens PIS/COFINS (2 casas)
-        "",              # 76 - Base de cálculo PIS/COFINS (2 casas)
-        "",              # 77 - Alíquota de PIS (2 casas)
-        "",              # 78 - Alíquota de COFINS (2 casas)
-        "",              # 79 - Chave de NFSe
-        "",              # 80 - Número processo/ato concessório
-        "",              # 81 - Origem do processo
-        "",              # 82 - Data da escrituração (dd/mm/aaaa)
-        "",              # 83 - CFPS (DF)
-        "",              # 84 - Natureza da receita PIS/COFINS
-        "",              # 85 - CST IPI
-        "",              # 86 - Lançamentos de SCP
-        "",              # 87 - Tipo de serviço (1/2)
-        "",              # 88 - Município destino
-        "",              # 89 - Pedágio (2 casas)
-        v_ipi,           # 90 - IPI (2 casas)
-        v_st,            # 91 - ICMS ST (2 casas)
-        "",              # 92 - Classificação Serviços EFD-Reinf
-        "",              # 93 - Indicativo Prestação EFD-Reinf
-        "",              # 94 - Número doc arrecadação (RS)
-        "",              # 95 - Tipo do título (0-4/99)
-        "",              # 96 - Identificação
-        v_icms_d,        # 97 - ICMS Desonerado (2 casas)
-        "",              # 98 - IPI Devolução (2 casas)
-    ]
-    return pipe_join(fields)
+    return pipe_join([
+        "1000", especie, cnpj_emit, "", acumulador, cfop_first, "",
+        nNF, serie, "", dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete,
+        "T", "", "", "", "", "", "", "", "", v_frete, v_seg, v_outro,
+        v_pis, "", v_cofins, "", "", "", "", "", "", "", v_prod,
+        c_mun_fg, "0", "", "", ie_emit, "", "", "", "", "", "", "",
+        n_di, "N", chave, "", "", "", "", "", "1", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "10", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        v_ipi, v_st, "", "", "", "", "", v_icms_d, "",
+    ])
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 1020 – Impostos da nota
-# 19 campos | Um registro por imposto presente
-# Códigos conforme tabela oficial Impostos.xls
+# REGISTROS 1020 – Impostos (um por imposto)
 # ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root) -> list:
     total  = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
@@ -700,41 +535,22 @@ def gerar_registros_1020(nfe_root) -> list:
     v_nf   = fmt_decimal(get_text(total, "nfe:vNF"))
     linhas = []
 
-    def linha_1020(cod_imp, perc_red="", base="", aliq="", valor="",
-                   isentas="", outras="", v_ipi="", v_st="", v_cont="", cod_rec=""):
-        fields = [
-            "1020",   # 1  - Identificação do registro
-            cod_imp,  # 2  - Código do imposto (tabela Impostos.xls)
-            perc_red, # 3  - % redução base de cálculo (2 casas)
-            base,     # 4  - Base de cálculo (2 casas)
-            aliq,     # 5  - Alíquota (2 casas; 3 casas p/ imposto 39)
-            valor,    # 6  - Valor do imposto (2 casas)
-            isentas,  # 7  - Valor de isentas (2 casas)
-            outras,   # 8  - Valor de outras (2 casas)
-            v_ipi,    # 9  - Valor do IPI (2 casas)
-            v_st,     # 10 - Valor da substituição tributária (2 casas)
-            v_cont,   # 11 - Valor contábil (2 casas)
-            cod_rec,  # 12 - Código do recolhimento do imposto
-            "",       # 13 - Valor não tributadas (GO) (2 casas)
-            "",       # 14 - Valor parcela reduzida (GO) (2 casas)
-            "",       # 15 - Alíq. Interestadual
-            "",       # 16 - Nat. rendimentos
-            "",       # 17 - Tipo de Dedução
-            "",       # 18 - Tipo de Isenção
-            "",       # 19 - Descrição
-        ]
-        return pipe_join(fields)
+    def r1020(cod, perc_red="", base="", aliq="", valor="",
+              isentas="", outras="", v_ipi="", v_st="", v_cont="", cod_rec=""):
+        return pipe_join([
+            "1020", cod, perc_red, base, aliq, valor,
+            isentas, outras, v_ipi, v_st, v_cont, cod_rec,
+            "", "", "", "", "", "", "",
+        ])
 
-    # Lê valores do total
-    v_bc_icms   = get_text(total, "nfe:vBC")
-    v_icms      = get_text(total, "nfe:vICMS")
-    v_ipi_tot   = get_text(total, "nfe:vIPI")
-    v_st_tot    = get_text(total, "nfe:vST")
-    v_pis_tot   = get_text(total, "nfe:vPIS")
-    v_cofins_tot= get_text(total, "nfe:vCOFINS")
-    v_icms_deson= get_text(total, "nfe:vICMSDeson")
+    v_bc_icms    = get_text(total, "nfe:vBC")
+    v_icms       = get_text(total, "nfe:vICMS")
+    v_ipi_tot    = get_text(total, "nfe:vIPI")
+    v_st_tot     = get_text(total, "nfe:vST")
+    v_pis_tot    = get_text(total, "nfe:vPIS")
+    v_cofins_tot = get_text(total, "nfe:vCOFINS")
+    v_icms_deson = get_text(total, "nfe:vICMSDeson")
 
-    # Alíquota média ICMS
     try:
         bc_f  = float(v_bc_icms)
         icm_f = float(v_icms)
@@ -742,7 +558,6 @@ def gerar_registros_1020(nfe_root) -> list:
     except (ValueError, ZeroDivisionError):
         aliq_icms_med = ""
 
-    # Soma bases por imposto nos itens
     det_list     = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     bc_ipi_total = 0.0
     bc_pis_total = 0.0
@@ -758,16 +573,16 @@ def gerar_registros_1020(nfe_root) -> list:
                 bc_ipi_total += float(get_text(ipi_t, "nfe:vBC") or "0")
             except ValueError:
                 pass
-        for pis_type in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
-            pn = imp.find(f"nfe:PIS/nfe:{pis_type}", NS)
+        for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
+            pn = imp.find(f"nfe:PIS/nfe:{pt}", NS)
             if pn is not None:
                 try:
                     bc_pis_total += float(get_text(pn, "nfe:vBC") or "0")
                 except ValueError:
                     pass
                 break
-        for cof_type in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
-            cn = imp.find(f"nfe:COFINS/nfe:{cof_type}", NS)
+        for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
+            cn = imp.find(f"nfe:COFINS/nfe:{ct}", NS)
             if cn is not None:
                 try:
                     bc_cof_total += float(get_text(cn, "nfe:vBC") or "0")
@@ -775,103 +590,93 @@ def gerar_registros_1020(nfe_root) -> list:
                     pass
                 break
 
-    # ── 1 – ICMS ──────────────────────────────────────────────────────
+    # 1 – ICMS
     if v_icms and float(v_icms) > 0:
-        linhas.append(linha_1020(
-            cod_imp = 1,
-            base    = fmt_decimal(v_bc_icms),
-            aliq    = aliq_icms_med,
-            valor   = fmt_decimal(v_icms),
-            v_ipi   = fmt_decimal(v_ipi_tot),
-            v_st    = fmt_decimal(v_st_tot),
-            v_cont  = v_nf,
+        linhas.append(r1020(1,
+            base   = fmt_decimal(v_bc_icms),
+            aliq   = aliq_icms_med,
+            valor  = fmt_decimal(v_icms),
+            v_ipi  = fmt_decimal(v_ipi_tot),
+            v_st   = fmt_decimal(v_st_tot),
+            v_cont = v_nf,
         ))
 
-    # ── 2 – IPI ───────────────────────────────────────────────────────
+    # 2 – IPI
     if v_ipi_tot and float(v_ipi_tot) > 0:
-        linhas.append(linha_1020(
-            cod_imp = 2,
-            base    = fmt_decimal(str(bc_ipi_total)),
-            valor   = fmt_decimal(v_ipi_tot),
-            v_cont  = v_nf,
+        linhas.append(r1020(2,
+            base   = fmt_decimal(str(bc_ipi_total)),
+            valor  = fmt_decimal(v_ipi_tot),
+            v_cont = v_nf,
         ))
 
-    # ── 4 – PIS ───────────────────────────────────────────────────────
+    # 4 – PIS
     if v_pis_tot and float(v_pis_tot) > 0:
-        linhas.append(linha_1020(
-            cod_imp = 4,
-            base    = fmt_decimal(str(bc_pis_total)),
-            valor   = fmt_decimal(v_pis_tot),
-            v_cont  = v_nf,
+        linhas.append(r1020(4,
+            base   = fmt_decimal(str(bc_pis_total)),
+            valor  = fmt_decimal(v_pis_tot),
+            v_cont = v_nf,
         ))
 
-    # ── 5 – COFINS ────────────────────────────────────────────────────
+    # 5 – COFINS
     if v_cofins_tot and float(v_cofins_tot) > 0:
-        linhas.append(linha_1020(
-            cod_imp = 5,
-            base    = fmt_decimal(str(bc_cof_total)),
-            valor   = fmt_decimal(v_cofins_tot),
-            v_cont  = v_nf,
+        linhas.append(r1020(5,
+            base   = fmt_decimal(str(bc_cof_total)),
+            valor  = fmt_decimal(v_cofins_tot),
+            v_cont = v_nf,
         ))
 
-    # ── 45 – ICMS Importação (valor desonerado) ───────────────────────
+    # 45 – ICMS Importação (desonerado)
     if v_icms_deson and float(v_icms_deson) > 0:
-        linhas.append(linha_1020(
-            cod_imp = 45,
-            base    = fmt_decimal(v_bc_icms),
-            aliq    = aliq_icms_med,
-            valor   = fmt_decimal(v_icms_deson),
-            v_cont  = v_nf,
+        linhas.append(r1020(45,
+            base   = fmt_decimal(v_bc_icms),
+            aliq   = aliq_icms_med,
+            valor  = fmt_decimal(v_icms_deson),
+            v_cont = v_nf,
         ))
 
-    # ── 133 – PIS Importação ─────────────────────────────────────────
+    # 133 – PIS Importação
     if v_pis_tot and float(v_pis_tot) > 0:
-        linhas.append(linha_1020(
-            cod_imp = 133,
-            base    = fmt_decimal(str(bc_pis_total)),
-            valor   = fmt_decimal(v_pis_tot),
-            v_cont  = v_nf,
+        linhas.append(r1020(133,
+            base   = fmt_decimal(str(bc_pis_total)),
+            valor  = fmt_decimal(v_pis_tot),
+            v_cont = v_nf,
         ))
 
-    # ── 134 – COFINS Importação ──────────────────────────────────────
+    # 134 – COFINS Importação
     if v_cofins_tot and float(v_cofins_tot) > 0:
-        linhas.append(linha_1020(
-            cod_imp = 134,
-            base    = fmt_decimal(str(bc_cof_total)),
-            valor   = fmt_decimal(v_cofins_tot),
-            v_cont  = v_nf,
+        linhas.append(r1020(134,
+            base   = fmt_decimal(str(bc_cof_total)),
+            valor  = fmt_decimal(v_cofins_tot),
+            v_cont = v_nf,
         ))
 
-    # ── 183 – IBS ────────────────────────────────────────────────────
+    # 183 – IBS
     if ibs_t is not None:
         v_ibs_uf = get_text(ibs_t, "nfe:gIBS/nfe:gIBSUF/nfe:vIBSUF")
         bc_ibs   = get_text(ibs_t, "nfe:vBCIBSCBS")
         if v_ibs_uf and float(v_ibs_uf) > 0:
-            linhas.append(linha_1020(
-                cod_imp = 183,
-                base    = fmt_decimal(bc_ibs),
-                valor   = fmt_decimal(v_ibs_uf),
-                v_cont  = v_nf,
+            linhas.append(r1020(183,
+                base   = fmt_decimal(bc_ibs),
+                valor  = fmt_decimal(v_ibs_uf),
+                v_cont = v_nf,
             ))
 
-    # ── 184 – CBS ────────────────────────────────────────────────────
+    # 184 – CBS
     if ibs_t is not None:
         v_cbs  = get_text(ibs_t, "nfe:gCBS/nfe:vCBS")
         bc_cbs = get_text(ibs_t, "nfe:vBCIBSCBS")
         if v_cbs and float(v_cbs) > 0:
-            linhas.append(linha_1020(
-                cod_imp = 184,
-                base    = fmt_decimal(bc_cbs),
-                valor   = fmt_decimal(v_cbs),
-                v_cont  = v_nf,
+            linhas.append(r1020(184,
+                base   = fmt_decimal(bc_cbs),
+                valor  = fmt_decimal(v_cbs),
+                v_cont = v_nf,
             ))
 
     return linhas
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 1030 – Estoque (item da nota)
-# 111 campos conforme leiaute oficial
+# REGISTRO 1030 – Estoque / item (111 campos)
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int) -> str:
     prod    = det.find("nfe:prod", NS)
@@ -887,12 +692,10 @@ def gerar_registro_1030(det, seq: int) -> str:
     v_unit   = get_text(prod, "nfe:vUnCom")
     cest     = get_text(prod, "nfe:CEST")
 
-    # DI
     di_node = prod.find("nfe:DI", NS)
     n_di    = get_text(di_node, "nfe:nDI") if di_node is not None else ""
     d_di    = fmt_date(get_text(di_node, "nfe:dDI")) if di_node is not None else ""
 
-    # ICMS
     icms_node  = None
     v_bc_icms  = ""
     aliq_icms  = ""
@@ -917,7 +720,6 @@ def gerar_registro_1030(det, seq: int) -> str:
             v_icms_des = fmt_decimal(get_text(icms_node, "nfe:vICMSDeson"))
             v_bc_st    = fmt_decimal(get_text(icms_node, "nfe:vBCST"))
 
-        # IPI
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         ipi_nt   = imposto.find("nfe:IPI/nfe:IPINT", NS)
         if ipi_trib is not None:
@@ -931,12 +733,11 @@ def gerar_registro_1030(det, seq: int) -> str:
         else:
             v_ipi = aliq_ipi = cst_ipi = ""
 
-        # PIS
         v_pis = aliq_pis = cst_pis = bc_pis = ""
         pis_node = imposto.find("nfe:PIS", NS)
         if pis_node is not None:
-            for pis_type in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
-                pn = pis_node.find(f"nfe:{pis_type}", NS)
+            for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
+                pn = pis_node.find(f"nfe:{pt}", NS)
                 if pn is not None:
                     v_pis    = fmt_decimal(get_text(pn, "nfe:vPIS"))
                     aliq_pis = fmt_decimal(get_text(pn, "nfe:pPIS"), 4)
@@ -944,12 +745,11 @@ def gerar_registro_1030(det, seq: int) -> str:
                     bc_pis   = fmt_decimal(get_text(pn, "nfe:vBC"))
                     break
 
-        # COFINS
         v_cof = aliq_cof = cst_cof = bc_cof = ""
         cof_node = imposto.find("nfe:COFINS", NS)
         if cof_node is not None:
-            for cof_type in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
-                cn = cof_node.find(f"nfe:{cof_type}", NS)
+            for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
+                cn = cof_node.find(f"nfe:{ct}", NS)
                 if cn is not None:
                     v_cof    = fmt_decimal(get_text(cn, "nfe:vCOFINS"))
                     aliq_cof = fmt_decimal(get_text(cn, "nfe:pCOFINS"), 4)
@@ -957,10 +757,8 @@ def gerar_registro_1030(det, seq: int) -> str:
                     bc_cof   = fmt_decimal(get_text(cn, "nfe:vBC"))
                     break
 
-        # IBS / CBS
         ibs_node       = imposto.find("nfe:IBSCBS", NS)
-        ibs_class_trib = ""
-        ibs_bc = ibs_aliq = ibs_val = ""
+        ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
         cbs_bc = cbs_aliq = cbs_val = ""
         if ibs_node is not None:
             ibs_class_trib = get_text(ibs_node, "nfe:cClassTrib")
@@ -983,168 +781,52 @@ def gerar_registro_1030(det, seq: int) -> str:
         ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
         cbs_bc = cbs_aliq = cbs_val = ""
 
-    # Campo 4 = Base Cal. + IPI (conforme leiaute)
     try:
         vp = float(v_prod or "0")
-        vi = float(get_text(
-            imposto.find("nfe:IPI/nfe:IPITrib", ET.Element("x")) if imposto else None,
-            "nfe:vIPI") or "0")
+        vi_str = ""
+        if imposto is not None:
+            ipi_t2 = imposto.find("nfe:IPI/nfe:IPITrib", NS)
+            if ipi_t2 is not None:
+                vi_str = get_text(ipi_t2, "nfe:vIPI")
+        vi = float(vi_str or "0")
         v_total = fmt_decimal(str(vp + vi))
-    except (ValueError, AttributeError, TypeError):
+    except (ValueError, TypeError):
         v_total = fmt_decimal(v_prod)
 
-    fields = [
-        "1030",                    # 1   - Identificação do registro
-        cod_prod,                  # 2   - Código do produto
-        qtd,                       # 3   - Quantidade (2 casas)
-        v_total,                   # 4   - Valor total (Base Cal. + IPI) (2 casas)
-        v_ipi,                     # 5   - Valor IPI (2 casas)
-        fmt_decimal(v_prod),       # 6   - Base de cálculo (2 casas)
-        "1",                       # 7   - Tipo de Lançamento (1=vinculado à nota)
-        d_di,                      # 8   - Data (dd/mm/aaaa)
-        n_di,                      # 9   - Número da DI (2 casas)
-        cst_icms,                  # 10  - Código da Situação Tributária
-        fmt_decimal(v_prod),       # 11  - Valor bruto do produto (2 casas)
-        fmt_decimal(v_desc),       # 12  - Valor do desconto (2 casas)
-        v_bc_icms,                 # 13  - Base de cálculo do ICMS (2 casas)
-        v_bc_st,                   # 14  - Base de cálculo do ICMS ST (2 casas)
-        aliq_icms,                 # 15  - Alíquota do ICMS (2 casas)
-        "",                        # 16  - Produto Incentivado (PE) S/N
-        "",                        # 17  - Código da apuração (PE)
-        "",                        # 18  - Valor do frete (2 casas)
-        "",                        # 19  - Valor do seguro (2 casas)
-        fmt_decimal(v_outro),      # 20  - Valor das despesas acessórias (2 casas)
-        "",                        # 21  - Quantidade de gasolina (3 casas)
-        v_icms,                    # 22  - Valor do ICMS (2 casas)
-        "",                        # 23  - Valor da SUBTRI (2 casas)
-        "",                        # 24  - Valor de isentas IPI (2 casas)
-        "",                        # 25  - Valor de outras IPI (2 casas)
-        "",                        # 26  - ICMS NFP (2 casas)
-        fmt_decimal(v_unit, 6),    # 27  - Valor Unitário (6 casas)
-        "",                        # 28  - Alíquota da Substituição Tributária (2 casas)
-        cst_ipi,                   # 29  - Código de Tributação do IPI
-        aliq_ipi,                  # 30  - Alíquota do IPI (2 casas)
-        "",                        # 31  - Base de cálculo ISSQN (2 casas)
-        "",                        # 32  - Alíquota do ISSQN (2 casas)
-        "",                        # 33  - Valor ISSQN (2 casas)
-        cfop,                      # 34  - CFOP
-        "",                        # 35  - Série de fabricação do ECF
-        aliq_pis,                  # 36  - Alíquota do PIS (4 casas)
-        v_pis,                     # 37  - Valor do PIS (2 casas)
-        aliq_cof,                  # 38  - Alíquota da COFINS (4 casas)
-        v_cof,                     # 39  - Valor da COFINS (2 casas)
-        fmt_decimal(v_prod),       # 40  - Custo total do produto (2 casas)
-        cst_pis,                   # 41  - CST do PIS
-        bc_pis,                    # 42  - Base de cálculo do PIS (2 casas)
-        cst_cof,                   # 43  - CST da COFINS
-        bc_cof,                    # 44  - Base de cálculo da COFINS (2 casas)
-        "",                        # 45  - Chassi do veículo
-        "",                        # 46  - Tipo de operação com o veículo (00/01/02/99)
-        "",                        # 47  - Lote do medicamento
-        "",                        # 48  - Quantidade de item por lote
-        "",                        # 49  - Data de validade (dd/mm/aaaa)
-        "",                        # 50  - Data de fabricação (dd/mm/aaaa)
-        "",                        # 51  - Referência base de cálculo (00-05)
-        "",                        # 52  - Valor tabelado/máximo (2 casas)
-        "",                        # 53  - Número de série da arma
-        "",                        # 54  - Número de série do cano
-        "",                        # 55  - Enquadramento do IPI
-        "S",                       # 56  - Movimentação física do produto (S/N)
-        unidade,                   # 57  - Unidade comercializada
-        "",                        # 58  - Complemento da CFOP (CAT 17/99)
-        "",                        # 59  - Tanque do combustível
-        fmt_decimal(v_prod),       # 60  - Valor contábil produto (2 casas)
-        "",                        # 61  - Qtd tributada PIS por unid. medida (3 casas)
-        "",                        # 62  - Valor unidade PIS por unid. medida (4 casas)
-        "",                        # 63  - Valor PIS por unid. medida (2 casas)
-        "",                        # 64  - Qtd tributada COFINS por unid. medida (3 casas)
-        "",                        # 65  - Valor unidade COFINS por unid. medida (4 casas)
-        "",                        # 66  - Valor COFINS por unid. medida (2 casas)
-        "",                        # 67  - Base do crédito (01-18)
-        "",                        # 68  - Número da Nota/Redução Z devolvido
-        "",                        # 69  - Descrição complementar
-        "",                        # 70  - Nota devolvida – CST PIS
-        "",                        # 71  - Nota devolvida – CST COFINS
-        "",                        # 72  - Vínculo de Crédito PIS
-        "",                        # 73  - Vínculo de Crédito COFINS
-        "",                        # 74  - Exclusão PIS (2 casas)
-        "",                        # 75  - Exclusão COFINS (2 casas)
-        "",                        # 76  - Base de cálculo ICMS Carga Média (2 casas)
-        "",                        # 77  - Alíquota ICMS Carga Média (2 casas)
-        "",                        # 78  - Valor ICMS Carga Média (2 casas)
-        "",                        # 79  - Número série ECF devolvido
-        "",                        # 80  - PIS/COFINS % redução base de cálculo (2 casas)
-        "",                        # 81  - Código recolhimento PIS devolvido
-        "",                        # 82  - Código recolhimento COFINS devolvido
-        "",                        # 83  - Código de recolhimento PIS
-        "",                        # 84  - Código de recolhimento COFINS
-        "",                        # 85  - Crédito Presumido PIS/COFINS – PIS (2 casas)
-        "",                        # 86  - Crédito Presumido PIS/COFINS – COFINS (2 casas)
-        "",                        # 87  - ICMS ST Antecipação Total – Base (2 casas)
-        "",                        # 88  - ICMS ST Antecipação Total – Alíquota (2 casas)
-        "",                        # 89  - ICMS ST Antecipação Total – Valor (2 casas)
-        "",                        # 90  - Código de recolhimento IPI
-        cest,                      # 91  - Código CEST
-        "",                        # 92  - ICMS ST Retido – Base de cálculo (2 casas)
-        "",                        # 93  - ICMS ST Retido – Valor (2 casas)
-        "",                        # 94  - ICMS ST Retido – Possui tag no XML (S/N)
-        "",                        # 95  - Identificador
-        "",                        # 96  - ICMS Próprio do Substituto – Valor (2 casas)
-        v_icms_des,                # 97  - Valor Desonerado (2 casas)
-        "",                        # 98  - Código (1-12/90)
-        "",                        # 99  - ICMS Não creditado
-        "",                        # 100 - ICMS Monofásico Qtde Trib. (4 casas)
-        "",                        # 101 - ICMS Monofásico Alíq. Fixa (4 casas)
-        "",                        # 102 - ICMS Monofásico Valor (2 casas)
-        "",                        # 103 - ICMS Monofásico FCV (4 casas)
-        ibs_class_trib,            # 104 - IBS – cClass Trib
-        ibs_bc,                    # 105 - IBS – Base de cálculo (2 casas)
-        ibs_aliq,                  # 106 - IBS – Alíquota (2 casas)
-        ibs_val,                   # 107 - IBS – Valor (2 casas)
-        ibs_class_trib,            # 108 - CBS – cClass Trib
-        cbs_bc,                    # 109 - CBS – Base de cálculo (2 casas)
-        cbs_aliq,                  # 110 - CBS – Alíquota (2 casas)
-        cbs_val,                   # 111 - CBS – Valor (2 casas)
-    ]
-    return pipe_join(fields)
+    return pipe_join([
+        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod),
+        "1", d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
+        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "", fmt_decimal(v_outro),
+        "", v_icms, "", "", "", "", fmt_decimal(v_unit, 6), "", cst_ipi,
+        aliq_ipi, "", "", "", cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
+        fmt_decimal(v_prod), cst_pis, bc_pis, cst_cof, bc_cof,
+        "", "", "", "", "", "", "", "", "", "", "", "S", unidade, "", "",
+        fmt_decimal(v_prod), "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", cest,
+        "", "", "", "", "", v_icms_des, "", "", "", "", "", "",
+        ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
+        ibs_class_trib, cbs_bc, cbs_aliq, cbs_val,
+    ])
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 1150 – IBS (filho do 1000)
-# 5 campos conforme leiaute oficial
+# REGISTROS 1150 / 1151 – IBS / CBS
 # ─────────────────────────────────────────────
-def gerar_registro_1150(class_trib, bc, aliq, valor) -> str:
-    fields = [
-        "1150",      # 1 - Identificação (fixo 1150)
-        class_trib,  # 2 - IBS – cClassTrib
-        bc,          # 3 - IBS – Base de cálculo (2 casas)
-        aliq,        # 4 - IBS – Alíquota (2 casas)
-        valor,       # 5 - IBS – Valor (2 casas)
-    ]
-    return pipe_join(fields)
+def gerar_registro_1150(ct, bc, aliq, valor) -> str:
+    return pipe_join(["1150", ct, bc, aliq, valor])
+
+
+def gerar_registro_1151(ct, bc, aliq, valor) -> str:
+    return pipe_join(["1151", ct, bc, aliq, valor])
 
 
 # ─────────────────────────────────────────────
-# REGISTRO 1151 – CBS (filho do 1000)
-# 5 campos conforme leiaute oficial
-# ─────────────────────────────────────────────
-def gerar_registro_1151(class_trib, bc, aliq, valor) -> str:
-    fields = [
-        "1151",      # 1 - Identificação (fixo 1151)
-        class_trib,  # 2 - CBS – cClassTrib
-        bc,          # 3 - CBS – Base de cálculo (2 casas)
-        aliq,        # 4 - CBS – Alíquota (2 casas)
-        valor,       # 5 - CBS – Valor (2 casas)
-    ]
-    return pipe_join(fields)
-
-
-# ─────────────────────────────────────────────
-# FUNÇÃO PRINCIPAL DE CONVERSÃO
+# CONVERSÃO PRINCIPAL
 # ─────────────────────────────────────────────
 def converter_xml(
     xml_content: bytes,
-    cnpj_empresa: str,
+    cnpj_fallback: str,
     acumulador: str = "1157",
     especie: str = "36",
     incluir_0000: bool = True,
@@ -1157,10 +839,21 @@ def converter_xml(
     except ET.ParseError as e:
         return "", {"erro": str(e)}
 
-    # Suporte a nfeProc ou NFe direto
     nfe = root.find("nfe:NFe", NS)
     if nfe is None:
         nfe = root
+
+    # ── CNPJ: lê do XML, usa fallback se vazio ────────────────────────
+    cnpj_xml, origem_cnpj = extrair_cnpj_dest(nfe)
+    nome_dest             = extrair_nome_dest(nfe)
+
+    if cnpj_xml:
+        cnpj_empresa = cnpj_xml
+    elif cnpj_fallback:
+        cnpj_empresa = cnpj_fallback
+        origem_cnpj  = "Manual (fallback)"
+    else:
+        return "", {"erro": "CNPJ do destinatário não encontrado no XML nem informado manualmente."}
 
     lines    = []
     resumo   = {}
@@ -1169,20 +862,22 @@ def converter_xml(
     ide      = nfe.find("nfe:infNFe/nfe:ide", NS)
     total    = nfe.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
 
-    resumo["nNF"]       = get_text(ide, "nfe:nNF")
-    resumo["Emitente"]  = get_text(emit, "nfe:xNome")
-    resumo["CNPJ Emit"] = get_text(emit, "nfe:CNPJ")
-    resumo["Emissão"]   = fmt_date(get_text(ide, "nfe:dhEmi"))
-    resumo["Itens"]     = len(det_list)
-    resumo["vNF"]       = fmt_decimal(get_text(total, "nfe:vNF"))
-    resumo["vICMS"]     = fmt_decimal(get_text(total, "nfe:vICMS"))
-    resumo["vICMSDes"]  = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
-    resumo["vIPI"]      = fmt_decimal(get_text(total, "nfe:vIPI"))
-    resumo["vPIS"]      = fmt_decimal(get_text(total, "nfe:vPIS"))
-    resumo["vCOFINS"]   = fmt_decimal(get_text(total, "nfe:vCOFINS"))
-    resumo["vII"]       = fmt_decimal(get_text(total, "nfe:vII"))
+    resumo["nNF"]         = get_text(ide, "nfe:nNF")
+    resumo["Emitente"]    = get_text(emit, "nfe:xNome")
+    resumo["CNPJ Emit"]   = get_text(emit, "nfe:CNPJ")
+    resumo["Destinatário"]= nome_dest
+    resumo["CNPJ Dest"]   = cnpj_empresa
+    resumo["Origem CNPJ"] = origem_cnpj
+    resumo["Emissão"]     = fmt_date(get_text(ide, "nfe:dhEmi"))
+    resumo["Itens"]       = len(det_list)
+    resumo["vNF"]         = fmt_decimal(get_text(total, "nfe:vNF"))
+    resumo["vICMS"]       = fmt_decimal(get_text(total, "nfe:vICMS"))
+    resumo["vICMSDes"]    = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
+    resumo["vIPI"]        = fmt_decimal(get_text(total, "nfe:vIPI"))
+    resumo["vPIS"]        = fmt_decimal(get_text(total, "nfe:vPIS"))
+    resumo["vCOFINS"]     = fmt_decimal(get_text(total, "nfe:vCOFINS"))
+    resumo["vII"]         = fmt_decimal(get_text(total, "nfe:vII"))
 
-    # ── Registros de cadastro ─────────────────────────────────────────
     if incluir_0000:
         lines.append(gerar_registro_0000(cnpj_empresa))
     if incluir_0020 and emit is not None:
@@ -1190,30 +885,25 @@ def converter_xml(
     if incluir_0100:
         produtos_gerados = set()
         for det in det_list:
-            prod     = det.find("nfe:prod", NS)
-            cod_prod = get_text(prod, "nfe:cProd")
-            if cod_prod not in produtos_gerados:
+            cod = get_text(det.find("nfe:prod", NS), "nfe:cProd")
+            if cod not in produtos_gerados:
                 lines.append(gerar_registro_0100(det))
-                produtos_gerados.add(cod_prod)
+                produtos_gerados.add(cod)
 
-    # ── Registro 1000 ─────────────────────────────────────────────────
-    lines.append(gerar_registro_1000(nfe, acumulador, especie))
+    lines.append(gerar_registro_1000(nfe, cnpj_empresa, acumulador, especie))
 
-    # ── Registros 1020 (um por imposto) ──────────────────────────────
-    for r1020 in gerar_registros_1020(nfe):
-        lines.append(r1020)
+    for r in gerar_registros_1020(nfe):
+        lines.append(r)
 
-    # ── Registros 1030 (um por item) ─────────────────────────────────
     for seq, det in enumerate(det_list, start=1):
         lines.append(gerar_registro_1030(det, seq))
 
-    # ── Registros 1150 / 1151 (IBS/CBS agrupados por cClassTrib) ─────
     ibs_gerados = {}
     for det in det_list:
-        imposto  = det.find("nfe:imposto", NS)
-        if imposto is None:
+        imp = det.find("nfe:imposto", NS)
+        if imp is None:
             continue
-        ibs_node = imposto.find("nfe:IBSCBS", NS)
+        ibs_node = imp.find("nfe:IBSCBS", NS)
         if ibs_node is None:
             continue
         ct   = get_text(ibs_node, "nfe:cClassTrib")
@@ -1230,7 +920,7 @@ def converter_xml(
         guf = gibs.find("nfe:gIBSUF", NS)
         if guf is not None:
             try:
-                ibs_gerados[ct]["v_ibs"]  += float(get_text(guf, "nfe:vIBSUF") or "0")
+                ibs_gerados[ct]["v_ibs"]   += float(get_text(guf, "nfe:vIBSUF") or "0")
                 ibs_gerados[ct]["aliq_ibs"] = get_text(guf, "nfe:pIBSUF")
             except ValueError:
                 pass
@@ -1243,25 +933,19 @@ def converter_xml(
             except ValueError:
                 pass
 
-    for ct, dados in ibs_gerados.items():
-        lines.append(gerar_registro_1150(
-            ct,
-            fmt_decimal(str(dados["bc_ibs"])),
-            fmt_decimal(dados["aliq_ibs"]),
-            fmt_decimal(str(dados["v_ibs"])),
-        ))
-        lines.append(gerar_registro_1151(
-            ct,
-            fmt_decimal(str(dados["bc_cbs"])),
-            fmt_decimal(dados["aliq_cbs"]),
-            fmt_decimal(str(dados["v_cbs"])),
-        ))
+    for ct, d in ibs_gerados.items():
+        lines.append(gerar_registro_1150(ct, fmt_decimal(str(d["bc_ibs"])),
+                                         fmt_decimal(d["aliq_ibs"]),
+                                         fmt_decimal(str(d["v_ibs"]))))
+        lines.append(gerar_registro_1151(ct, fmt_decimal(str(d["bc_cbs"])),
+                                         fmt_decimal(d["aliq_cbs"]),
+                                         fmt_decimal(str(d["v_cbs"]))))
 
     return "\n".join(lines), resumo
 
 
 # ─────────────────────────────────────────────
-# SIDEBAR THOMSON REUTERS
+# SIDEBAR
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"### ℹ Sobre")
@@ -1271,29 +955,34 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("### ⚙ Parâmetros")
-    cnpj_empresa = st.text_input(
-        "CNPJ da Empresa (destinatária)",
+
+    st.markdown(
+        """
+        <div style='font-size:12px; color:#DDDDDD; margin-bottom:4px;'>
+        🔍 <b>CNPJ da empresa</b> é lido automaticamente do XML
+        (<code>&lt;dest&gt;&lt;CNPJ&gt;</code>).<br>
+        Use o campo abaixo apenas como <b>fallback</b>.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    cnpj_fallback = st.text_input(
+        "CNPJ Fallback (opcional)",
         value="",
         max_chars=14,
-        help="Somente números, sem pontos ou traços."
+        help="Usado somente se o XML não contiver o CNPJ do destinatário.",
     )
-    acumulador = st.text_input(
-        "Código do Acumulador",
-        value="1157",
-        help="1157 = CFOP 3102 (Importação)"
-    )
-    especie = st.text_input(
-        "Código da Espécie",
-        value="36",
-        help="36 = NF-e modelo 55"
-    )
+    acumulador = st.text_input("Código do Acumulador", value="1157",
+                               help="1157 = CFOP 3102 (Importação)")
+    especie    = st.text_input("Código da Espécie", value="36",
+                               help="36 = NF-e modelo 55")
 
     st.markdown("---")
     st.markdown("### 📋 Registros de cadastro")
     inc_0000 = st.checkbox("0000 – Identificação da empresa", value=True)
     inc_0020 = st.checkbox("0020 – Fornecedor (emitente)", value=True)
     inc_0100 = st.checkbox("0100 – Produtos", value=True)
-    st.caption("1000 / 1020 / 1030 / 1150 / 1151 são sempre gerados.")
+    st.caption("1000 / 1020 / 1030 / 1150 / 1151 sempre gerados.")
 
     st.markdown("---")
     st.markdown("### ⚙ Encoding")
@@ -1314,29 +1003,37 @@ with st.expander("📖 Instruções de Uso — clique para expandir", expanded=F
         """
         <div class="instrucoes-box">
 
-        <h4>🔹 Passo 1 — Informe o CNPJ</h4>
-        <p>Informe o <b>CNPJ da empresa destinatária</b> (sua empresa) na barra lateral,
-        apenas números.</p>
+        <h4>🔹 Como o CNPJ é obtido</h4>
+        <p>O sistema lê automaticamente o CNPJ do <b>destinatário</b> diretamente do XML
+        da NF-e, na tag <code>&lt;dest&gt;&lt;CNPJ&gt;</code>.<br>
+        Caso o XML não possua CNPJ (ex.: CPF ou idEstrangeiro), o valor correspondente
+        é utilizado. O campo <b>CNPJ Fallback</b> na barra lateral é usado apenas quando
+        nenhuma inscrição for encontrada no XML.</p>
 
-        <h4>🔹 Passo 2 — Confirme os parâmetros</h4>
+        <h4>🔹 Passo 1 — Parâmetros</h4>
         <p>Confirme o <b>Acumulador</b> (<code>1157</code> para CFOP 3102) e a
-        <b>Espécie</b> (<code>36</code> para NF-e modelo 55).</p>
+        <b>Espécie</b> (<code>36</code> para NF-e modelo 55) na barra lateral.</p>
 
-        <h4>🔹 Passo 3 — Upload dos XMLs</h4>
-        <p>Faça o upload de um ou mais arquivos <b>XML de NF-e</b> (nfeProc ou NFe).</p>
+        <h4>🔹 Passo 2 — Upload dos XMLs</h4>
+        <p>Faça o upload de um ou mais arquivos <b>XML de NF-e</b>
+        (nfeProc ou NFe direta).</p>
+
+        <h4>🔹 Passo 3 — Verificar resumo</h4>
+        <p>Confira o <b>CNPJ Dest</b> e a <b>Origem CNPJ</b> na tabela de resumo
+        para garantir que o CNPJ correto foi lido do XML.</p>
 
         <h4>🔹 Passo 4 — Baixar e importar</h4>
-        <p>Clique em <b>⬇ Baixar Arquivo Domínio</b> e importe o arquivo <code>.TXT</code>
-        gerado no módulo fiscal do <b>Domínio Sistemas</b>.</p>
+        <p>Clique em <b>⬇ Baixar Arquivo Domínio (.TXT ANSI)</b> e importe no
+        módulo fiscal do <b>Domínio Sistemas</b>.</p>
 
         <hr>
 
         <h4>⚠ Observações</h4>
         <ul>
-            <li>O arquivo de saída é gerado em <b>ANSI (Latin-1)</b>, padrão do Domínio.</li>
+            <li>Saída em <b>ANSI (Latin-1)</b>, padrão Domínio Sistemas.</li>
             <li>Registros gerados: <b>0000, 0020, 0100, 1000, 1020, 1030, 1150, 1151</b>.</li>
-            <li>O registro <b>1020</b> é gerado um por imposto presente na nota,
-                conforme a tabela oficial de impostos do Domínio Sistemas.</li>
+            <li>O registro <b>1020</b> é gerado um por imposto presente na nota
+                (tabela oficial Domínio).</li>
             <li>Impostos mapeados: <b>1-ICMS, 2-IPI, 4-PIS, 5-COFINS,
                 45-ICMS Importação, 133-PIS Importação, 134-COFINS Importação,
                 183-IBS, 184-CBS</b>.</li>
@@ -1356,16 +1053,13 @@ uploaded_files = st.file_uploader(
     "📂 Selecione um ou mais arquivos XML de NF-e",
     type=["xml"],
     accept_multiple_files=True,
-    help="Arquivos XML de NF-e (nfeProc ou NFe) — modelo 55",
+    help="XML de NF-e (nfeProc ou NFe) — modelo 55",
 )
 
 # ─────────────────────────────────────────────
 # PROCESSAMENTO
 # ─────────────────────────────────────────────
 if uploaded_files:
-    if not cnpj_empresa:
-        st.warning("⚠️ Informe o CNPJ da empresa destinatária na barra lateral.")
-        st.stop()
 
     all_lines   = []
     all_resumos = []
@@ -1377,7 +1071,7 @@ if uploaded_files:
         xml_bytes = f.read()
         texto, resumo = converter_xml(
             xml_bytes,
-            cnpj_empresa=cnpj_empresa,
+            cnpj_fallback=cnpj_fallback,
             acumulador=acumulador,
             especie=especie,
             incluir_0000=inc_0000,
@@ -1406,6 +1100,28 @@ if uploaded_files:
     if all_resumos:
         st.success(f"✅ {len(all_resumos)} arquivo(s) convertido(s) com sucesso!")
 
+        # ── Destaque do CNPJ lido do XML ─────────────────────────────
+        cnpjs_unicos = list({r["CNPJ Dest"]: r for r in all_resumos}.values())
+        if cnpjs_unicos:
+            st.markdown("#### 🏢 Empresa Destinatária (lida do XML)")
+            cols = st.columns(len(cnpjs_unicos[:4]))
+            for idx, r in enumerate(cnpjs_unicos[:4]):
+                with cols[idx]:
+                    st.markdown(
+                        f"""
+                        <div class="cnpj-badge">
+                            CNPJ: {r['CNPJ Dest']}
+                        </div>
+                        <div class="info-origem">
+                            📌 {r['Origem CNPJ']}<br>
+                            🏷️ {r['Destinatário'][:60] if r['Destinatário'] else '—'}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        st.markdown("---")
+
         with st.expander("📊 Resumo das notas processadas", expanded=True):
             st.dataframe(all_resumos, use_container_width=True)
 
@@ -1417,7 +1133,6 @@ if uploaded_files:
 
         st.markdown("---")
 
-        # Download ANSI (padrão Domínio)
         saida_ansi = encode_ansi(saida_final)
 
         col1, col2 = st.columns(2)
@@ -1456,7 +1171,7 @@ if uploaded_files:
             c5.metric("Total NF (R$)",
                       f"{total_nf:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         except Exception:
-            c5.metric("Total NF", "-")
+            c5.metric("Total NF", "—")
 
 else:
     st.info("👆 Faça o upload de um ou mais arquivos XML de NF-e para iniciar a conversão.")
