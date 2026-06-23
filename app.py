@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V3.2-FINAL"
+VERSAO = "V3.3-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -59,280 +59,66 @@ CST_ENTRADA_SAIDA = {
 
 # ─────────────────────────────────────────────
 # TABELA DE PAÍSES: BACEN → Código Interno Domínio
-# Chave: cPais do XML (BACEN), Valor: código interno da planilha Países.xls
 # ─────────────────────────────────────────────
 PAISES_BACEN_PARA_DOMINIO = {
-    # Mapeamento BACEN → Domínio (planilha Países.xls)
-    "0132": 1,   # AFEGANISTAO
-    "7560": 2,   # AFRICA DO SUL
-    "0175": 3,   # ALBANIA
-    "0230": 4,   # ALEMANHA
-    "0370": 5,   # ANDORRA
-    "0400": 6,   # ANGOLA
-    "0418": 7,   # ANGUILLA
-    "0434": 8,   # ANTIGUA E BARBUDA
-    "0477": 9,   # ANTILHAS HOLANDESAS
-    "0531": 10,  # ARABIA SAUDITA
-    "0590": 11,  # ARGELIA
-    "0639": 12,  # ARGENTINA
-    "0647": 13,  # ARMENIA
-    "0655": 14,  # ARUBA
-    "0698": 15,  # AUSTRALIA
-    "0728": 16,  # AUSTRIA
-    "0736": 17,  # AZERBAIJAO
-    "0779": 18,  # BAHAMAS
-    "0809": 19,  # BAHREIN
-    "0817": 20,  # BANGLADESH
-    "0833": 21,  # BARBADOS
-    "0850": 22,  # BELARUS
-    "0876": 23,  # BELGICA
-    "0884": 24,  # BELIZE
-    "0906": 25,  # BENIN
-    "0930": 26,  # BERMUDAS
-    "0973": 27,  # BOLIVIA
-    "0981": 28,  # BOSNIA-HERZEGOVINA
-    "1015": 29,  # BOTSUANA
-    "1058": 30,  # BRASIL
-    "1082": 31,  # BRUNEI
-    "1112": 32,  # BULGARIA
-    "1155": 33,  # BURKINA FASO
-    "1198": 34,  # BURUNDI
-    "1279": 35,  # BUTAO
-    "1376": 36,  # CABO VERDE
-    "1414": 37,  # CAMAROES
-    "1457": 38,  # CAMBOJA
-    "1490": 39,  # CANADA
-    "1504": 40,  # GUERNSEY ILHA DO CANAL
-    "1511": 41,  # CANARIAS
-    "1546": 42,  # CATAR
-    "1554": 43,  # CAYMAN ILHA
-    "1589": 44,  # CAZAQUISTAO
-    "1600": 45,  # CHADE
-    "1635": 46,  # CHILE
-    "1651": 47,  # CHINA
-    "1694": 48,  # CHIPRE
-    "1716": 49,  # CHRISTMAS ILHA
-    "1750": 50,  # CINGAPURA / SINGAPURA
-    "1767": 51,  # COCOS KEELING
-    "1792": 52,  # COLOMBIA
-    "1830": 53,  # COMORES
-    "1872": 54,  # CONGO REP DEMOCRATICA
-    "1880": 55,  # CONGO REP DO
-    "1902": 56,  # COOK ILHA
-    "1937": 57,  # COREIA DO NORTE
-    "1953": 58,  # COREIA DO SUL
-    "1961": 59,  # COSTA DO MARFIM
-    "1988": 60,  # COSTA RICA
-    "2003": 61,  # KUWAIT
-    "2070": 62,  # CROACIA
-    "2100": 63,  # CUBA
-    "2127": 64,  # DINAMARCA
-    "2151": 65,  # DJIBUTI
-    "2186": 66,  # DOMINICA ILHA
-    "2291": 67,  # EGITO
-    "2321": 68,  # EL SALVADOR
-    "2356": 69,  # EMIRADOS ARABES UNIDOS
-    "2399": 70,  # EQUADOR
-    "2402": 71,  # ERITREIA
-    "2445": 72,  # ESCOCIA
-    "2453": 73,  # ESLOVACA REP
-    "2461": 74,  # ESLOVENIA
-    "2496": 76,  # ESTADOS UNIDOS  ← este é o caso da nota atual
-    "2518": 77,  # ESTONIA
-    "2534": 78,  # ETIOPIA
-    "2550": 79,  # FALKLAND
-    "2593": 80,  # FEROE ILHAS
-    "2674": 81,  # FIJI
-    "2712": 82,  # FILIPINAS
-    "2755": 83,  # FINLANDIA
-    "2810": 84,  # FORMOSA TAIWAN
-    "2836": 85,  # FRANCA
-    "2895": 86,  # GABAO
-    "2917": 87,  # GALES
-    "2933": 88,  # GAMBIA
-    "2976": 89,  # GANA
-    "3018": 90,  # GEORGIA
-    "3050": 91,  # GIBRALTAR
-    "3093": 92,  # GRA-BRETANHA
-    "3107": 93,  # GRANADA
-    "3131": 94,  # GRECIA
-    "3174": 95,  # GROENLANDIA
-    "3204": 96,  # GUADALUPE
-    "3212": 97,  # GUAM
-    "3255": 98,  # GUATEMALA
-    "3298": 99,  # GUIANA
-    "3310": 100, # GUIANA FRANCESA
-    "3344": 101, # GUINE
-    "3352": 102, # GUINE-BISSAU
-    "3360": 103, # GUINE-EQUATORIAL
-    "3417": 104, # HAITI
-    "3450": 105, # HOLANDA / PAISES BAIXOS
-    "3484": 106, # HONDURAS
-    "3492": 107, # HONG KONG
-    "3557": 108, # HUNGRIA
-    "3573": 109, # IEMEN
-    "3611": 110, # INDIA
-    "3654": 111, # INDONESIA
-    "3697": 112, # INGLATERRA
-    "3727": 113, # IRA
-    "3751": 114, # IRAQUE
-    "3794": 115, # IRLANDA
-    "3808": 116, # IRLANDA DO NORTE
-    "3832": 117, # ISLANDIA
-    "3867": 118, # ISRAEL
-    "3883": 119, # ITALIA
-    "3913": 120, # SERVIA (antiga Iugoslávia)
-    "3964": 121, # JAMAICA
-    "3999": 122, # JAPAO
-    "4030": 123, # JOHNSTON ILHAS
-    "4111": 124, # JORDANIA
-    "4200": 125, # KIRIBATI
-    "4235": 126, # LAOS
-    "4260": 127, # LEBUAN
-    "4278": 128, # LESOTO
-    "4316": 129, # LETONIA
-    "4340": 130, # LIBANO
-    "4383": 131, # LIBERIA
-    "4405": 132, # LIBIA
-    "4421": 133, # LIECHTENSTEIN
-    "4456": 134, # LITUANIA
-    "4472": 135, # LUXEMBURGO
-    "4499": 136, # MACAU
-    "4502": 137, # MACEDONIA DO NORTE
-    "4553": 138, # MADAGASCAR
-    "4588": 139, # MADEIRA ILHA
-    "4618": 140, # MALASIA
-    "4642": 141, # MALAVI
-    "4677": 142, # MALDIVAS
-    "4723": 143, # MALI
-    "4740": 144, # MALTA
-    "4766": 145, # MAN ILHAS
-    "4774": 146, # MARIANAS DO NORTE
-    "4855": 147, # MARROCOS
-    "4880": 148, # MARSHALL ILHAS
-    "4936": 149, # MARTINICA
-    "4944": 150, # MAURICIO
-    "4952": 151, # MAURITANIA
-    "5010": 152, # MEXICO
-    "5053": 153, # MIANMAR
-    "5070": 154, # MICRONESIA
-    "5088": 155, # MIDWAY ILHAS
-    "5096": 156, # MOCAMBIQUE
-    "5177": 157, # MOLDAVIA
-    "5215": 158, # MONACO
-    "5258": 159, # MONGOLIA
-    "5282": 160, # MONTSERRAT ILHA
-    "5380": 161, # NAMIBIA
-    "5428": 162, # NAURU
-    "5487": 163, # NEPAL
-    "5568": 164, # NICARAGUA
-    "5665": 165, # NIGER
-    "5738": 166, # NIGERIA
-    "5754": 167, # NIUE ILHA
-    "5762": 168, # NORFOLK ILHA
-    "5800": 169, # NORUEGA
-    "5835": 170, # NOVA CALEDONIA
-    "5851": 171, # NOVA ZELANDIA
-    "5894": 172, # OMA
-    "5932": 173, # PALAU
-    "5991": 174, # PANAMA
-    "6033": 175, # PAPUA NOVA GUINE
-    "6076": 176, # PAQUISTAO
-    "6114": 177, # PARAGUAI
-    "6238": 178, # PERU
-    "6254": 179, # PITCAIRN ILHA
-    "6289": 180, # POLINESIA FRANCESA
-    "6300": 181, # POLONIA
-    "6327": 182, # PORTO RICO
-    "6408": 183, # PORTUGAL
-    "6432": 184, # QUENIA
-    "6459": 185, # QUIRGUIZ
-    "6505": 186, # REINO UNIDO
-    "6513": 187, # REP CENTRO-AFRICANA
-    "6548": 188, # REP DOMINICANA
-    "6580": 189, # REUNIAO ILHA
-    "6599": 190, # ROMENIA
-    "6645": 191, # RUANDA
-    "6700": 192, # RUSSIA
-    "6750": 193, # SAARA OCIDENTAL
-    "6769": 194, # SALOMAO ILHAS
-    "6777": 195, # SAMOA
-    "6781": 196, # SAMOA AMERICANA
-    "6793": 197, # SAN MARINO
-    "6807": 198, # SANTA HELENA
-    "6815": 199, # SANTA LUCIA
-    "6858": 200, # SAO CRISTOVAO E NEVES
-    "6866": 201, # SAO PEDRO E MIQUELON
-    "6904": 202, # SAO TOME E PRINCIPE
-    "6912": 203, # SAO VICENTE E GRANADINA
-    "7005": 204, # SENEGAL
-    "7030": 205, # SERRA LEOA
-    "7056": 206, # SEYCHELLE
-    "7102": 207, # SIRIA
-    "7153": 208, # SOMALIA
-    "7200": 209, # SRI LANKA
-    "7285": 210, # ESWATINI / SUAZILANDIA
-    "7315": 211, # SUDAO
-    "7358": 212, # SUECIA
-    "7370": 213, # SUICA
-    "7412": 214, # SURINAME
-    "7447": 215, # TADJIQUISTAO
-    "7455": 216, # TAILANDIA
-    "7501": 217, # TANZANIA
-    "7544": 218, # TCHECA REP
-    "7552": 219, # TERRITORIO BRITANICO OC INDICO
-    "7590": 220, # TIMOR LESTE
-    "7595": 221, # TOGO
-    "7641": 222, # TONGA
-    "7676": 223, # TOQUELAU ILHAS
-    "7706": 224, # TRINIDAD E TOBAGO
-    "7722": 225, # TUNISIA
-    "7757": 226, # TURCAS E CAICOS
-    "7765": 227, # TURCOMENISTAO
-    "7773": 228, # TURQUIA
-    "7781": 229, # TUVALU
-    "7820": 230, # UCRANIA
-    "7838": 231, # UGANDA
-    "7889": 232, # URUGUAI
-    "7919": 233, # UZBEQUISTAO
-    "7951": 234, # VANUATU
-    "7994": 235, # VATICANO
-    "8001": 236, # VENEZUELA
-    "8052": 237, # VIETNA
-    "8079": 238, # VIRGENS ILHAS BRITANICAS
-    "8087": 239, # VIRGENS ILHAS EUA
-    "8109": 240, # WAKE ILHA
-    "8150": 241, # WALLIS E FUTUNA
-    "8168": 242, # ZAMBIA
-    "8176": 243, # ZIMBABUE
-    "8230": 244, # ZONA DO CANAL DO PANAMA
-    "8273": 245, # MONTENEGRO
-    "8281": 248, # PACIFICO ILHAS EUA
-    "8311": 249, # QATAR
-    "8338": 250, # SAINT KITTS E NEVIS
-    "8346": 251, # SERVIA E MONTENEGRO
-    "8451": 252, # ALAND ILHAS
-    "8478": 253, # ANTARTICA
-    "8486": 254, # BONAIRE SAINT EUSTATIUS E SABA
-    "8494": 255, # BOUVET ILHA
-    "8508": 256, # CURACAO
-    "8516": 257, # HEARD E ILHAS MCDONALD
-    "8524": 258, # SAO MARTINHO PARTE FRANCESA
-    "8532": 259, # GEORGIA DO SUL E SANDWICH DO SUL
-    "8540": 260, # JERSEY ILHA DO CANAL
-    "8559": 261, # MAYOTTE
-    "8567": 262, # SAO BARTOLOMEU
-    "8575": 263, # SVALBARD E JAN MAYEN
-    "8583": 264, # TERRAS AUSTRAIS FRANCESAS
-    "8591": 265, # SAO MARTINHO PARTE HOLANDESA
-    "8605": 266, # PALESTINA
-    "8613": 267, # SUDAO DO SUL
-    "8630": 268, # GUERNSEY ILHA DO CANAL
-    # Espanha (adicionada pois é BACEN comum)
-    "2453": 75,  # ESPANHA — cPais BACEN 2453
+    "0132": 1,   "7560": 2,   "0175": 3,   "0230": 4,   "0370": 5,
+    "0400": 6,   "0418": 7,   "0434": 8,   "0477": 9,   "0531": 10,
+    "0590": 11,  "0639": 12,  "0647": 13,  "0655": 14,  "0698": 15,
+    "0728": 16,  "0736": 17,  "0779": 18,  "0809": 19,  "0817": 20,
+    "0833": 21,  "0850": 22,  "0876": 23,  "0884": 24,  "0906": 25,
+    "0930": 26,  "0973": 27,  "0981": 28,  "1015": 29,  "1058": 30,
+    "1082": 31,  "1112": 32,  "1155": 33,  "1198": 34,  "1279": 35,
+    "1376": 36,  "1414": 37,  "1457": 38,  "1490": 39,  "1504": 40,
+    "1511": 41,  "1546": 42,  "1554": 43,  "1589": 44,  "1600": 45,
+    "1635": 46,  "1651": 47,  "1694": 48,  "1716": 49,  "1750": 50,
+    "1767": 51,  "1792": 52,  "1830": 53,  "1872": 54,  "1880": 55,
+    "1902": 56,  "1937": 57,  "1953": 58,  "1961": 59,  "1988": 60,
+    "2003": 61,  "2070": 62,  "2100": 63,  "2127": 64,  "2151": 65,
+    "2186": 66,  "2291": 67,  "2321": 68,  "2356": 69,  "2399": 70,
+    "2402": 71,  "2445": 72,  "2453": 73,  "2461": 74,
+    "2484": 75,  # ESPANHA
+    "2496": 76,  # ESTADOS UNIDOS
+    "2518": 77,  "2534": 78,  "2550": 79,  "2593": 80,
+    "2674": 81,  "2712": 82,  "2755": 83,  "2810": 84,  "2836": 85,
+    "2895": 86,  "2917": 87,  "2933": 88,  "2976": 89,  "3018": 90,
+    "3050": 91,  "3093": 92,  "3107": 93,  "3131": 94,  "3174": 95,
+    "3204": 96,  "3212": 97,  "3255": 98,  "3298": 99,  "3310": 100,
+    "3344": 101, "3352": 102, "3360": 103, "3417": 104, "3450": 105,
+    "3484": 106, "3492": 107, "3557": 108, "3573": 109, "3611": 110,
+    "3654": 111, "3697": 112, "3727": 113, "3751": 114, "3794": 115,
+    "3808": 116, "3832": 117, "3867": 118, "3883": 119, "3913": 120,
+    "3964": 121, "3999": 122, "4030": 123, "4111": 124, "4200": 125,
+    "4235": 126, "4260": 127, "4278": 128, "4316": 129, "4340": 130,
+    "4383": 131, "4405": 132, "4421": 133, "4456": 134, "4472": 135,
+    "4499": 136, "4502": 137, "4553": 138, "4588": 139, "4618": 140,
+    "4642": 141, "4677": 142, "4723": 143, "4740": 144, "4766": 145,
+    "4774": 146, "4855": 147, "4880": 148, "4936": 149, "4944": 150,
+    "4952": 151, "5010": 152, "5053": 153, "5070": 154, "5088": 155,
+    "5096": 156, "5177": 157, "5215": 158, "5258": 159, "5282": 160,
+    "5380": 161, "5428": 162, "5487": 163, "5568": 164, "5665": 165,
+    "5738": 166, "5754": 167, "5762": 168, "5800": 169, "5835": 170,
+    "5851": 171, "5894": 172, "5932": 173, "5991": 174, "6033": 175,
+    "6076": 176, "6114": 177, "6238": 178, "6254": 179, "6289": 180,
+    "6300": 181, "6327": 182, "6408": 183, "6432": 184, "6459": 185,
+    "6505": 186, "6513": 187, "6548": 188, "6580": 189, "6599": 190,
+    "6645": 191, "6700": 192, "6750": 193, "6769": 194, "6777": 195,
+    "6781": 196, "6793": 197, "6807": 198, "6815": 199, "6858": 200,
+    "6866": 201, "6904": 202, "6912": 203, "7005": 204, "7030": 205,
+    "7056": 206, "7102": 207, "7153": 208, "7200": 209, "7285": 210,
+    "7315": 211, "7358": 212, "7370": 213, "7412": 214, "7447": 215,
+    "7455": 216, "7501": 217, "7544": 218, "7552": 219, "7590": 220,
+    "7595": 221, "7641": 222, "7676": 223, "7706": 224, "7722": 225,
+    "7757": 226, "7765": 227, "7773": 228, "7781": 229, "7820": 230,
+    "7838": 231, "7889": 232, "7919": 233, "7951": 234, "7994": 235,
+    "8001": 236, "8052": 237, "8079": 238, "8087": 239, "8109": 240,
+    "8150": 241, "8168": 242, "8176": 243, "8230": 244, "8273": 245,
+    "8281": 248, "8311": 249, "8338": 250, "8346": 251, "8451": 252,
+    "8478": 253, "8486": 254, "8494": 255, "8508": 256, "8516": 257,
+    "8524": 258, "8532": 259, "8540": 260, "8559": 261, "8567": 262,
+    "8575": 263, "8583": 264, "8591": 265, "8605": 266, "8613": 267,
+    "8630": 268,
 }
 
-# Nome do país → código Domínio (fallback por nome quando BACEN não bater)
 PAISES_NOME_PARA_DOMINIO = {
     "AFEGANISTAO": 1, "AFRICA DO SUL": 2, "ALBANIA": 3, "ALEMANHA": 4,
     "ANDORRA": 5, "ANGOLA": 6, "ANGUILLA": 7, "ANTIGUA E BARBUDA": 8,
@@ -341,102 +127,88 @@ PAISES_NOME_PARA_DOMINIO = {
     "AUSTRIA": 16, "AZERBAIJAO": 17, "BAHAMAS": 18, "BAHREIN": 19,
     "BANGLADESH": 20, "BARBADOS": 21, "BELARUS": 22, "BELGICA": 23,
     "BELIZE": 24, "BENIN": 25, "BERMUDAS": 26, "BOLIVIA": 27,
-    "BOSNIA-HERZEGOVINA": 28, "BOTSUANA": 29, "BRASIL": 30, "BRUNEI": 31,
+    "BOSNIA": 28, "BOTSUANA": 29, "BRASIL": 30, "BRUNEI": 31,
     "BULGARIA": 32, "BURKINA FASO": 33, "BURUNDI": 34, "BUTAO": 35,
     "CABO VERDE": 36, "CAMAROES": 37, "CAMBOJA": 38, "CANADA": 39,
     "CANARIAS": 41, "CATAR": 42, "CAYMAN": 43, "CAZAQUISTAO": 44,
     "CHADE": 45, "CHILE": 46, "CHINA": 47, "CHIPRE": 48,
     "CHRISTMAS": 49, "CINGAPURA": 50, "SINGAPURA": 50,
-    "COCOS": 51, "COLOMBIA": 52, "COMORES": 53,
-    "CONGO": 54, "COOK": 56, "COREIA DO NORTE": 57, "COREIA DO SUL": 58,
-    "COSTA DO MARFIM": 59, "COSTA RICA": 60, "KUWAIT": 61, "CROACIA": 62,
-    "CUBA": 63, "DINAMARCA": 64, "DJIBUTI": 65, "DOMINICA": 66,
-    "EGITO": 67, "EL SALVADOR": 68, "EMIRADOS ARABES UNIDOS": 69,
-    "EQUADOR": 70, "ERITREIA": 71, "ESCOCIA": 72, "ESLOVACA": 73,
-    "ESLOVENIA": 74, "ESPANHA": 75, "ESTADOS UNIDOS": 76, "ESTONIA": 77,
-    "ETIOPIA": 78, "FALKLAND": 79, "FEROE": 80, "FIJI": 81,
-    "FILIPINAS": 82, "FINLANDIA": 83, "FORMOSA": 84, "TAIWAN": 84,
-    "FRANCA": 85, "GABAO": 86, "GALES": 87, "GAMBIA": 88,
-    "GANA": 89, "GEORGIA": 90, "GIBRALTAR": 91, "GRA-BRETANHA": 92,
+    "COCOS": 51, "COLOMBIA": 52, "COMORES": 53, "CONGO": 54,
+    "COOK": 56, "COREIA DO NORTE": 57, "COREIA DO SUL": 58,
+    "COSTA DO MARFIM": 59, "COSTA RICA": 60, "KUWAIT": 61,
+    "CROACIA": 62, "CUBA": 63, "DINAMARCA": 64, "DJIBUTI": 65,
+    "DOMINICA": 66, "EGITO": 67, "EL SALVADOR": 68,
+    "EMIRADOS ARABES UNIDOS": 69, "EQUADOR": 70, "ERITREIA": 71,
+    "ESCOCIA": 72, "ESLOVACA": 73, "ESLOVENIA": 74, "ESPANHA": 75,
+    "ESTADOS UNIDOS": 76, "ESTONIA": 77, "ETIOPIA": 78,
+    "FALKLAND": 79, "FEROE": 80, "FIJI": 81, "FILIPINAS": 82,
+    "FINLANDIA": 83, "FORMOSA": 84, "TAIWAN": 84, "FRANCA": 85,
+    "GABAO": 86, "GALES": 87, "GAMBIA": 88, "GANA": 89,
+    "GEORGIA": 90, "GIBRALTAR": 91, "GRA-BRETANHA": 92,
     "GRANADA": 93, "GRECIA": 94, "GROENLANDIA": 95, "GUADALUPE": 96,
     "GUAM": 97, "GUATEMALA": 98, "GUIANA": 99, "GUIANA FRANCESA": 100,
     "GUINE": 101, "GUINE-BISSAU": 102, "GUINE-EQUATORIAL": 103,
-    "HAITI": 104, "HOLANDA": 105, "PAISES BAIXOS": 105, "HONDURAS": 106,
-    "HONG KONG": 107, "HUNGRIA": 108, "IEMEN": 109, "INDIA": 110,
-    "INDONESIA": 111, "INGLATERRA": 112, "IRA": 113, "IRAQUE": 114,
-    "IRLANDA": 115, "IRLANDA DO NORTE": 116, "ISLANDIA": 117,
-    "ISRAEL": 118, "ITALIA": 119, "SERVIA": 120, "JAMAICA": 121,
-    "JAPAO": 122, "JOHNSTON": 123, "JORDANIA": 124, "KIRIBATI": 125,
-    "LAOS": 126, "LEBUAN": 127, "LESOTO": 128, "LETONIA": 129,
-    "LIBANO": 130, "LIBERIA": 131, "LIBIA": 132, "LIECHTENSTEIN": 133,
-    "LITUANIA": 134, "LUXEMBURGO": 135, "MACAU": 136,
-    "MACEDONIA DO NORTE": 137, "MADAGASCAR": 138, "MADEIRA": 139,
-    "MALASIA": 140, "MALAVI": 141, "MALDIVAS": 142, "MALI": 143,
-    "MALTA": 144, "MAN": 145, "MARIANAS DO NORTE": 146, "MARROCOS": 147,
-    "MARSHALL": 148, "MARTINICA": 149, "MAURICIO": 150,
-    "MAURITANIA": 151, "MEXICO": 152, "MIANMAR": 153, "BIRMANIA": 153,
-    "MICRONESIA": 154, "MIDWAY": 155, "MOCAMBIQUE": 156, "MOLDAVIA": 157,
-    "MONACO": 158, "MONGOLIA": 159, "MONTSERRAT": 160, "NAMIBIA": 161,
-    "NAURU": 162, "NEPAL": 163, "NICARAGUA": 164, "NIGER": 165,
-    "NIGERIA": 166, "NIUE": 167, "NORFOLK": 168, "NORUEGA": 169,
+    "HAITI": 104, "HOLANDA": 105, "PAISES BAIXOS": 105,
+    "HONDURAS": 106, "HONG KONG": 107, "HUNGRIA": 108, "IEMEN": 109,
+    "INDIA": 110, "INDONESIA": 111, "INGLATERRA": 112, "IRA": 113,
+    "IRAQUE": 114, "IRLANDA": 115, "IRLANDA DO NORTE": 116,
+    "ISLANDIA": 117, "ISRAEL": 118, "ITALIA": 119, "SERVIA": 120,
+    "JAMAICA": 121, "JAPAO": 122, "JOHNSTON": 123, "JORDANIA": 124,
+    "KIRIBATI": 125, "LAOS": 126, "LEBUAN": 127, "LESOTO": 128,
+    "LETONIA": 129, "LIBANO": 130, "LIBERIA": 131, "LIBIA": 132,
+    "LIECHTENSTEIN": 133, "LITUANIA": 134, "LUXEMBURGO": 135,
+    "MACAU": 136, "MACEDONIA DO NORTE": 137, "MADAGASCAR": 138,
+    "MADEIRA": 139, "MALASIA": 140, "MALAVI": 141, "MALDIVAS": 142,
+    "MALI": 143, "MALTA": 144, "MAN": 145, "MARIANAS DO NORTE": 146,
+    "MARROCOS": 147, "MARSHALL": 148, "MARTINICA": 149,
+    "MAURICIO": 150, "MAURITANIA": 151, "MEXICO": 152,
+    "MIANMAR": 153, "BIRMANIA": 153, "MICRONESIA": 154,
+    "MIDWAY": 155, "MOCAMBIQUE": 156, "MOLDAVIA": 157, "MONACO": 158,
+    "MONGOLIA": 159, "MONTSERRAT": 160, "NAMIBIA": 161, "NAURU": 162,
+    "NEPAL": 163, "NICARAGUA": 164, "NIGER": 165, "NIGERIA": 166,
+    "NIUE": 167, "NORFOLK": 168, "NORUEGA": 169,
     "NOVA CALEDONIA": 170, "NOVA ZELANDIA": 171, "OMA": 172,
     "PALAU": 173, "PANAMA": 174, "PAPUA NOVA GUINE": 175,
     "PAQUISTAO": 176, "PARAGUAI": 177, "PERU": 178, "PITCAIRN": 179,
     "POLINESIA FRANCESA": 180, "POLONIA": 181, "PORTO RICO": 182,
-    "PORTUGAL": 183, "QUENIA": 184, "QUIRGUIZ": 185, "REINO UNIDO": 186,
-    "REPUBLICA CENTRO-AFRICANA": 187, "REPUBLICA DOMINICANA": 188,
-    "REUNIAO": 189, "ROMENIA": 190, "RUANDA": 191, "RUSSIA": 192,
-    "SAARA OCIDENTAL": 193, "SALOMAO": 194, "SAMOA": 195,
-    "SAMOA AMERICANA": 196, "SAN MARINO": 197, "SANTA HELENA": 198,
-    "SANTA LUCIA": 199, "SAO CRISTOVAO E NEVES": 200,
-    "SAO PEDRO E MIQUELON": 201, "SAO TOME E PRINCIPE": 202,
-    "SAO VICENTE E GRANADINA": 203, "SENEGAL": 204, "SERRA LEOA": 205,
-    "SEYCHELLE": 206, "SIRIA": 207, "SOMALIA": 208, "SRI LANKA": 209,
-    "ESWATINI": 210, "SUAZILANDIA": 210, "SUDAO": 211, "SUECIA": 212,
-    "SUICA": 213, "SURINAME": 214, "TADJIQUISTAO": 215,
-    "TAILANDIA": 216, "TANZANIA": 217, "TCHECA": 218,
-    "TERRITORIO BRITANICO": 219, "TIMOR LESTE": 220, "TOGO": 221,
-    "TONGA": 222, "TOQUELAU": 223, "TRINIDAD E TOBAGO": 224,
-    "TUNISIA": 225, "TURCAS E CAICOS": 226, "TURCOMENISTAO": 227,
-    "TURQUIA": 228, "TUVALU": 229, "UCRANIA": 230, "UGANDA": 231,
-    "URUGUAI": 232, "UZBEQUISTAO": 233, "VANUATU": 234,
-    "VATICANO": 235, "VENEZUELA": 236, "VIETNA": 237,
-    "VIRGENS BRITANICAS": 238, "VIRGENS EUA": 239, "WAKE": 240,
-    "WALLIS E FUTUNA": 241, "ZAMBIA": 242, "ZIMBABUE": 243,
-    "ZONA DO CANAL DO PANAMA": 244, "MONTENEGRO": 245,
-    "QATAR": 249, "SAINT KITTS E NEVIS": 250,
+    "PORTUGAL": 183, "QUENIA": 184, "QUIRGUIZ": 185,
+    "REINO UNIDO": 186, "REPUBLICA CENTRO-AFRICANA": 187,
+    "REPUBLICA DOMINICANA": 188, "REUNIAO": 189, "ROMENIA": 190,
+    "RUANDA": 191, "RUSSIA": 192, "SAARA OCIDENTAL": 193,
+    "SALOMAO": 194, "SAMOA": 195, "SAMOA AMERICANA": 196,
+    "SAN MARINO": 197, "SANTA HELENA": 198, "SANTA LUCIA": 199,
+    "SAO CRISTOVAO E NEVES": 200, "SAO PEDRO E MIQUELON": 201,
+    "SAO TOME E PRINCIPE": 202, "SAO VICENTE E GRANADINA": 203,
+    "SENEGAL": 204, "SERRA LEOA": 205, "SEYCHELLE": 206,
+    "SIRIA": 207, "SOMALIA": 208, "SRI LANKA": 209,
+    "ESWATINI": 210, "SUAZILANDIA": 210, "SUDAO": 211,
+    "SUECIA": 212, "SUICA": 213, "SURINAME": 214,
+    "TADJIQUISTAO": 215, "TAILANDIA": 216, "TANZANIA": 217,
+    "TCHECA": 218, "TERRITORIO BRITANICO": 219, "TIMOR LESTE": 220,
+    "TOGO": 221, "TONGA": 222, "TOQUELAU": 223,
+    "TRINIDAD E TOBAGO": 224, "TUNISIA": 225,
+    "TURCAS E CAICOS": 226, "TURCOMENISTAO": 227, "TURQUIA": 228,
+    "TUVALU": 229, "UCRANIA": 230, "UGANDA": 231, "URUGUAI": 232,
+    "UZBEQUISTAO": 233, "VANUATU": 234, "VATICANO": 235,
+    "VENEZUELA": 236, "VIETNA": 237, "VIRGENS BRITANICAS": 238,
+    "VIRGENS EUA": 239, "WAKE": 240, "WALLIS E FUTUNA": 241,
+    "ZAMBIA": 242, "ZIMBABUE": 243, "ZONA DO CANAL DO PANAMA": 244,
+    "MONTENEGRO": 245, "QATAR": 249, "SAINT KITTS E NEVIS": 250,
     "CURACAO": 256, "MAYOTTE": 261, "PALESTINA": 266,
     "SUDAO DO SUL": 267,
 }
 
 def resolver_codigo_pais_dominio(c_pais_xml: str, x_pais_xml: str) -> str:
-    """
-    Converte o cPais do XML (código BACEN, ex: '2496')
-    para o código interno do Domínio Sistemas (ex: 76).
-    Estratégia:
-      1. Tenta pelo código BACEN (com zero-fill de 4 dígitos)
-      2. Fallback: busca por palavras-chave no nome do país
-      3. Se não encontrar, retorna o cPais original do XML
-    """
-    # Normaliza para 4 dígitos com zero à esquerda
     c_pais_norm = (c_pais_xml or "").strip().zfill(4)
-
-    # 1. Busca direta pelo código BACEN
     if c_pais_norm in PAISES_BACEN_PARA_DOMINIO:
         return str(PAISES_BACEN_PARA_DOMINIO[c_pais_norm])
-
-    # 2. Fallback por nome do país
     if x_pais_xml:
         nome_upper = x_pais_xml.upper().strip()
-        # Busca exata
         if nome_upper in PAISES_NOME_PARA_DOMINIO:
             return str(PAISES_NOME_PARA_DOMINIO[nome_upper])
-        # Busca parcial (primeira palavra-chave que bater)
         for chave, cod in PAISES_NOME_PARA_DOMINIO.items():
             if chave in nome_upper or nome_upper in chave:
                 return str(cod)
-
-    # 3. Retorna o código original se não encontrar
     return c_pais_xml or ""
 
 # ─────────────────────────────────────────────
@@ -560,8 +332,7 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
 # ─────────────────────────────────────────────
-# REGISTRO 0020 – Fornecedor
-# ALTERADO V3.2: campo 11 agora usa código interno Domínio (planilha Países.xls)
+# REGISTRO 0020
 # ─────────────────────────────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
@@ -574,12 +345,9 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         bairro      = get_text(ender, "nfe:xBairro")                 if ender is not None else ""
         cod_mun     = somente_numeros(get_text(ender, "nfe:cMun"))    if ender is not None else ""
         cep         = get_text(ender, "nfe:CEP")                     if ender is not None else ""
-
-        # ── ALTERAÇÃO V3.2: converte cPais BACEN → código interno Domínio ──
         c_pais_xml  = get_text(ender, "nfe:cPais")                   if ender is not None else ""
         x_pais_xml  = get_text(ender, "nfe:xPais")                   if ender is not None else ""
         cod_pais    = resolver_codigo_pais_dominio(c_pais_xml, x_pais_xml)
-
         inscricao   = ""
         uf_campo    = "EX"
         ie          = ""
@@ -598,7 +366,7 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         cod_mun      = somente_numeros(get_text(ender, "nfe:cMun"))   if ender is not None else ""
         cep          = get_text(ender, "nfe:CEP")                    if ender is not None else ""
         uf_campo     = get_text(ender, "nfe:UF")                     if ender is not None else ""
-        cod_pais     = ""  # Nacional: campo país fica vazio
+        cod_pais     = ""
         ie           = get_text(emit, "nfe:IE")
         crt          = get_text(emit, "nfe:CRT")
         regime_map   = {"1": "M", "2": "E", "3": "N"}
@@ -606,39 +374,9 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         contrib      = "S" if ie and ie.upper() not in ("ISENTO", "NAO CONTRIBUINTE", "") else "N"
 
     return pipe_join([
-        "0020",       # 1  - Fixo
-        inscricao,    # 2  - Inscrição (vazia para exterior)
-        razao,        # 3  - Razão Social
-        fantasia,     # 4  - Apelido
-        logradouro,   # 5  - Endereço
-        numero,       # 6  - Número
-        complemento,  # 7  - Complemento
-        bairro,       # 8  - Bairro
-        cod_mun,      # 9  - Código município
-        uf_campo,     # 10 - UF (EX para exterior)
-        cod_pais,     # 11 - Código País DOMÍNIO (planilha Países.xls)
-        cep,          # 12 - CEP
-        ie,           # 13 - IE
-        "",           # 14 - IM
-        "",           # 15 - Suframa
-        "",           # 16 - DDD
-        "",           # 17 - Telefone
-        "",           # 18 - FAX
-        "",           # 19 - Data cadastro
-        "",           # 20 - Conta contábil
-        "",           # 21 - Conta contábil cliente
-        "N",          # 22 - Agropecuário
-        "7",          # 23 - Natureza jurídica
-        regime,       # 24 - Regime apuração
-        contrib,      # 25 - Contribuinte ICMS
-        "",           # 26 - Alíquota ICMS
-        "",           # 27 - Categoria estabelecimento
-        "",           # 28 - IE ST
-        "",           # 29 - Email
-        "N",          # 30 - Interdependência
-        "N",          # 31 - Contribuinte CPRB
-        "",           # 32 - Processo adm/judicial
-        "",           # 33 - Tipo inscrição
+        "0020", inscricao, razao, fantasia, logradouro, numero, complemento,
+        bairro, cod_mun, uf_campo, cod_pais, cep, ie, "", "", "", "", "",
+        "", "", "", "N", "7", regime, contrib, "", "", "", "", "N", "N", "", "",
     ])
 
 # ─────────────────────────────────────────────
@@ -653,7 +391,6 @@ def extrair_pis_cofins(det) -> dict:
     }
     if imposto is None:
         return resultado
-
     pis_node = imposto.find("nfe:PIS", NS)
     if pis_node is not None:
         for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
@@ -663,7 +400,6 @@ def extrair_pis_cofins(det) -> dict:
                 aliq = get_text(pn, "nfe:pPIS") or get_text(pn, "nfe:vAliqProd")
                 resultado["aliq_pis_e"] = fmt_decimal(aliq, 4)
                 break
-
     cof_node = imposto.find("nfe:COFINS", NS)
     if cof_node is not None:
         for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
@@ -672,19 +408,16 @@ def extrair_pis_cofins(det) -> dict:
                 aliq = get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd")
                 resultado["aliq_cof_e"] = fmt_decimal(aliq, 4)
                 break
-
     resultado["cst_s"]      = CST_ENTRADA_SAIDA.get(resultado["cst_e"], "")
     resultado["aliq_pis_s"] = resultado["aliq_pis_e"]
     resultado["aliq_cof_s"] = resultado["aliq_cof_e"]
-
     ibs_node = imposto.find("nfe:IBSCBS", NS)
     if ibs_node is not None:
         resultado["class_trib"] = get_text(ibs_node, "nfe:cClassTrib")
-
     return resultado
 
 # ─────────────────────────────────────────────
-# REGISTRO 0100 – 92 campos
+# REGISTRO 0100
 # ─────────────────────────────────────────────
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
@@ -696,12 +429,10 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     cest      = get_text(prod, "nfe:CEST")
     cfop      = get_text(prod, "nfe:CFOP")
     cod_grupo = detectar_grupo(cfop, ncm, grupo_padrao)
-
     imposto   = det.find("nfe:imposto", NS)
     cst_icms  = ""
     aliq_icms = ""
     aliq_ipi  = ""
-
     if imposto is not None:
         for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40",
                    "ICMS51","ICMS60","ICMS70","ICMS90","ICMSSN101",
@@ -714,7 +445,6 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
-
     campos = [
         "0100", cod_prod, descricao, "", ncm, "", "", "", cod_grupo,
         unidade, "N", "O", "", "", "", "N", "",
@@ -731,87 +461,22 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     return pipe_join(campos)
 
 # ─────────────────────────────────────────────
-# REGISTRO 0110 – 70 campos
+# REGISTRO 0110
 # ─────────────────────────────────────────────
 def gerar_registro_0110(det) -> str:
     pc = extrair_pis_cofins(det)
     ct = pc["class_trib"]
-
     return pipe_join([
-        "0110",           # 1
-        "Inicial",        # 2
-        pc["cst_e"],      # 3
-        "",               # 4
-        "01",             # 5
-        "N",              # 6
-        "N",              # 7
-        pc["aliq_pis_e"], # 8
-        pc["aliq_cof_e"], # 9
-        "N",              # 10
-        "N",              # 11
-        "",               # 12
-        "",               # 13
-        "",               # 14
-        "",               # 15
-        pc["cst_s"],      # 16
-        "N",              # 17
-        "",               # 18
-        "",               # 19
-        "",               # 20
-        "N",              # 21
-        pc["aliq_pis_s"], # 22
-        pc["aliq_cof_s"], # 23
-        "N",              # 24
-        "N",              # 25
-        "",               # 26
-        "",               # 27
-        "",               # 28
-        "",               # 29
-        "",               # 30
-        "",               # 31
-        "N",              # 32
-        "N",              # 33
-        "",               # 34
-        "",               # 35
-        "",               # 36
-        "",               # 37
-        "",               # 38
-        "M",              # 39
-        "",               # 40
-        "N",              # 41
-        "N",              # 42
-        "N",              # 43
-        "",               # 44
-        "N",              # 45
-        "",               # 46
-        "N",              # 47
-        "",               # 48
-        "",               # 49
-        "",               # 50
-        "",               # 51
-        "",               # 52
-        "",               # 53
-        "",               # 54
-        "",               # 55
-        "N",              # 56
-        "",               # 57
-        "",               # 58
-        "N",              # 59
-        "",               # 60
-        "",               # 61
-        "N",              # 62
-        "",               # 63
-        "N",              # 64
-        "N",              # 65
-        "N",              # 66
-        ct,               # 67
-        ct,               # 68
-        "N",              # 69
-        "N",              # 70
+        "0110", "Inicial", pc["cst_e"], "", "01", "N", "N",
+        pc["aliq_pis_e"], pc["aliq_cof_e"], "N", "N", "", "", "", "",
+        pc["cst_s"], "N", "", "", "", "N", pc["aliq_pis_s"], pc["aliq_cof_s"],
+        "N", "N", "", "", "", "", "", "", "N", "N", "", "", "", "", "", "M",
+        "", "N", "N", "N", "", "N", "", "N", "", "", "", "", "", "", "N",
+        "", "", "N", "", "", "N", "", "N", "N", "N", ct, ct, "N", "N",
     ])
 
 # ─────────────────────────────────────────────
-# REGISTRO 1000 – 98 campos
+# REGISTRO 1000 – V3.3: Campo 70 fixo = "1"
 # ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
@@ -874,12 +539,8 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
 
-    tipo_doc_importacao = ""
-    if importacao and n_di:
-        if n_di.upper().startswith("DSI"):
-            tipo_doc_importacao = "1"
-        else:
-            tipo_doc_importacao = "10"
+    # ── V3.3: Campo 70 fixo = "1" para importação ────────────────────
+    tipo_doc_importacao = "1" if importacao else ""
 
     return pipe_join([
         "1000", especie, cnpj_forn, "", acumulador, cfop_first, "",
@@ -925,7 +586,7 @@ def gerar_registros_1015(nfe_root) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# REGISTROS 1020 – Impostos
+# REGISTROS 1020
 # ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root) -> list:
     total  = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
@@ -1023,6 +684,7 @@ def gerar_registros_1020(nfe_root) -> list:
 
 # ─────────────────────────────────────────────
 # REGISTRO 1030 – 111 campos
+# V3.3: IBS/CBS campos 104-111 sempre gerados quando existirem no XML
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int) -> str:
     prod    = det.find("nfe:prod", NS)
@@ -1044,12 +706,19 @@ def gerar_registro_1030(det, seq: int) -> str:
 
     icms_node  = None
     v_bc_icms  = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
-    mot_des    = ""
     v_ipi = aliq_ipi = cst_ipi = ""
     v_pis = aliq_pis = cst_pis = bc_pis = ""
     v_cof = aliq_cof = cst_cof = bc_cof = ""
-    ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
-    cbs_bc = cbs_aliq = cbs_val = ""
+
+    # ── IBS/CBS: inicializa sempre vazio, preenche se existir no XML ──
+    ibs_class_trib = ""
+    ibs_bc         = ""
+    ibs_aliq       = ""
+    ibs_val        = ""
+    cbs_class_trib = ""
+    cbs_bc         = ""
+    cbs_aliq       = ""
+    cbs_val        = ""
 
     if imposto is not None:
         for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40",
@@ -1066,7 +735,6 @@ def gerar_registro_1030(det, seq: int) -> str:
             cst_icms   = get_text(icms_node, "nfe:CST") or get_text(icms_node, "nfe:CSOSN")
             v_icms_des = fmt_decimal(get_text(icms_node, "nfe:vICMSDeson"))
             v_bc_st    = fmt_decimal(get_text(icms_node, "nfe:vBCST"))
-            mot_des    = get_text(icms_node, "nfe:motDesICMS")
 
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         ipi_nt   = imposto.find("nfe:IPI/nfe:IPINT", NS)
@@ -1100,19 +768,21 @@ def gerar_registro_1030(det, seq: int) -> str:
                     bc_cof   = fmt_decimal(get_text(cn, "nfe:vBC"))
                     break
 
+        # ── IBS/CBS: leitura dos campos do XML ────────────────────────
         ibs_node = imposto.find("nfe:IBSCBS", NS)
         if ibs_node is not None:
             ibs_class_trib = get_text(ibs_node, "nfe:cClassTrib")
+            cbs_class_trib = ibs_class_trib  # mesmo cClassTrib para IBS e CBS
             gibs = ibs_node.find("nfe:gIBSCBS", NS)
             if gibs is not None:
                 ibs_bc = fmt_decimal(get_text(gibs, "nfe:vBC"))
+                cbs_bc = ibs_bc  # mesma BC para IBS e CBS
                 guf = gibs.find("nfe:gIBSUF", NS)
                 if guf is not None:
                     ibs_aliq = fmt_decimal(get_text(guf, "nfe:pIBSUF"))
                     ibs_val  = fmt_decimal(get_text(guf, "nfe:vIBSUF"))
                 gcbs = gibs.find("nfe:gCBS", NS)
                 if gcbs is not None:
-                    cbs_bc   = ibs_bc
                     cbs_aliq = fmt_decimal(get_text(gcbs, "nfe:pCBS"))
                     cbs_val  = fmt_decimal(get_text(gcbs, "nfe:vCBS"))
 
@@ -1126,24 +796,121 @@ def gerar_registro_1030(det, seq: int) -> str:
         v_total = fmt_decimal(v_prod)
 
     return pipe_join([
-        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod),
-        "1", d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
-        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "", fmt_decimal(v_outro),
-        "", v_icms, "", "", "", "", fmt_decimal(v_unit, 6), "", cst_ipi,
-        aliq_ipi, "", "", "", cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
-        fmt_decimal(v_prod), cst_pis, bc_pis, cst_cof, bc_cof,
-        "", "", "", "", "", "", "", "", "", "", "", "S", unidade, "",
-        "", fmt_decimal(v_prod), "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "", "",
-        cest, "", "", "", "", v_icms_des, "", "", "", "", "", "",
-        ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
-        ibs_class_trib, cbs_bc, cbs_aliq, cbs_val,
+        "1030",                   # 1
+        cod_prod,                 # 2
+        qtd,                      # 3
+        v_total,                  # 4
+        v_ipi,                    # 5
+        fmt_decimal(v_prod),      # 6
+        "1",                      # 7
+        d_di,                     # 8
+        n_di,                     # 9
+        cst_icms,                 # 10
+        fmt_decimal(v_prod),      # 11
+        fmt_decimal(v_desc),      # 12
+        v_bc_icms,                # 13
+        v_bc_st,                  # 14
+        aliq_icms,                # 15
+        "",                       # 16
+        "",                       # 17
+        "",                       # 18
+        "",                       # 19
+        fmt_decimal(v_outro),     # 20
+        "",                       # 21
+        v_icms,                   # 22
+        "",                       # 23
+        "",                       # 24
+        "",                       # 25
+        "",                       # 26
+        fmt_decimal(v_unit, 6),   # 27
+        "",                       # 28
+        cst_ipi,                  # 29
+        aliq_ipi,                 # 30
+        "",                       # 31
+        "",                       # 32
+        "",                       # 33
+        cfop,                     # 34
+        "",                       # 35
+        aliq_pis,                 # 36
+        v_pis,                    # 37
+        aliq_cof,                 # 38
+        v_cof,                    # 39
+        fmt_decimal(v_prod),      # 40
+        cst_pis,                  # 41
+        bc_pis,                   # 42
+        cst_cof,                  # 43
+        bc_cof,                   # 44
+        "",                       # 45
+        "",                       # 46
+        "",                       # 47
+        "",                       # 48
+        "",                       # 49
+        "",                       # 50
+        "",                       # 51
+        "",                       # 52
+        "",                       # 53
+        "",                       # 54
+        "",                       # 55
+        "S",                      # 56
+        unidade,                  # 57
+        "",                       # 58
+        "",                       # 59
+        fmt_decimal(v_prod),      # 60
+        "",                       # 61
+        "",                       # 62
+        "",                       # 63
+        "",                       # 64
+        "",                       # 65
+        "",                       # 66
+        "",                       # 67
+        "",                       # 68
+        "",                       # 69
+        "",                       # 70
+        "",                       # 71
+        "",                       # 72
+        "",                       # 73
+        "",                       # 74
+        "",                       # 75
+        "",                       # 76
+        "",                       # 77
+        "",                       # 78
+        "",                       # 79
+        "",                       # 80
+        "",                       # 81
+        "",                       # 82
+        "",                       # 83
+        "",                       # 84
+        "",                       # 85
+        "",                       # 86
+        "",                       # 87
+        "",                       # 88
+        "",                       # 89
+        "",                       # 90
+        cest,                     # 91
+        "",                       # 92
+        "",                       # 93
+        "",                       # 94
+        "",                       # 95
+        "",                       # 96
+        v_icms_des,               # 97
+        "",                       # 98
+        "",                       # 99
+        "",                       # 100
+        "",                       # 101
+        "",                       # 102
+        "",                       # 103
+        ibs_class_trib,           # 104 – IBS cClassTrib
+        ibs_bc,                   # 105 – IBS Base de cálculo
+        ibs_aliq,                 # 106 – IBS Alíquota
+        ibs_val,                  # 107 – IBS Valor
+        cbs_class_trib,           # 108 – CBS cClassTrib
+        cbs_bc,                   # 109 – CBS Base de cálculo
+        cbs_aliq,                 # 110 – CBS Alíquota
+        cbs_val,                  # 111 – CBS Valor
     ])
 
 # ─────────────────────────────────────────────
-# REGISTRO 1097 – 35 campos
+# REGISTRO 1097
 # ─────────────────────────────────────────────
 def gerar_registro_1097(nfe_root) -> str:
     transp = nfe_root.find("nfe:infNFe/nfe:transp", NS)
@@ -1240,7 +1007,6 @@ def converter_xml(
     if importacao and dest_node is not None:
         nome_forn = get_text(dest_node, "nfe:xNome")
         uf_forn   = "EX"
-        # Resolve código do país para o resumo
         ender_dest = dest_node.find("nfe:enderDest", NS)
         c_pais_xml = get_text(ender_dest, "nfe:cPais") if ender_dest is not None else ""
         x_pais_xml = get_text(ender_dest, "nfe:xPais") if ender_dest is not None else ""
@@ -1270,7 +1036,7 @@ def converter_xml(
     resumo["vIPI"]           = fmt_decimal(get_text(total, "nfe:vIPI"))
     resumo["vPIS"]           = fmt_decimal(get_text(total, "nfe:vPIS"))
     resumo["vCOFINS"]        = fmt_decimal(get_text(total, "nfe:vCOFINS"))
-    resumo["Cod Pais (Dom)"] = cod_pais_dominio  # ← novo campo no resumo
+    resumo["Cod Pais (Dom)"] = cod_pais_dominio
     resumo["Grupo"]          = (
         f"{grupo_padrao} - {TABELA_GRUPOS.get(grupo_padrao,'GERAL')}"
         if grupo_padrao > 0 else "Auto (CFOP/NCM)"
@@ -1409,23 +1175,27 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V3.3-FINAL — Campo 70 do 1000 fixo = 1 | IBS/CBS 1030 revisado</h4>
+        <ul>
+          <li><b>1000 campo 70</b>: Fixo <b>1</b> para todas as notas de importação (conforme solicitação)</li>
+          <li><b>1030 campos 104-111</b>: IBS/CBS sempre preenchidos quando presentes no XML
+            <ul>
+              <li>104 = IBS cClassTrib | 105 = IBS BC | 106 = IBS Alíq. | 107 = IBS Valor</li>
+              <li>108 = CBS cClassTrib | 109 = CBS BC | 110 = CBS Alíq. | 111 = CBS Valor</li>
+            </ul>
+          </li>
+        </ul>
         <h4>V3.2-FINAL — Código de País convertido para tabela interna Domínio</h4>
         <ul>
-          <li><b>0020 campo 11</b>: Agora usa o código interno da planilha <b>Países.xls</b> do Domínio</li>
-          <li>Conversão automática: <b>cPais BACEN (XML)</b> → <b>código interno Domínio</b></li>
-          <li>Exemplo: cPais <code>2496</code> (BACEN EUA) → <code>76</code> (Domínio)</li>
-          <li>Fallback por nome do país caso o código BACEN não seja encontrado</li>
-          <li>Resumo exibe coluna <b>Cod Pais (Dom)</b> com o código resolvido</li>
+          <li><b>0020 campo 11</b>: Código interno da planilha Países.xls (ex: 2496 BACEN → 76 Domínio)</li>
         </ul>
-        <h4>V3.1-FINAL — Campo 70 do Registro 1000 corrigido</h4>
+        <h4>V3.1-FINAL — Campo 70 do Registro 1000</h4>
         <ul>
-          <li><b>1000 campo 70</b>: <b>10</b>=DI / <b>1</b>=DSI / vazio=nacional</li>
+          <li>Preenchimento automático: 10=DI / 1=DSI / vazio=nacional</li>
         </ul>
-        <h4>V3.0-FINAL — Baseado nos layouts oficiais do Dominio</h4>
+        <h4>V3.0-FINAL</h4>
         <ul>
-          <li>0020 importação → fornecedor EXTERIOR, CNPJ vazio, cPais BACEN</li>
-          <li>1000 campo 17: P=Proprio / T=Terceiros</li>
-          <li>1000: 98 campos | 1030: 111 campos | 1097: 35 campos</li>
+          <li>Layout oficial Domínio: 0020 (33 campos), 1000 (98), 1030 (111), 1097 (35)</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1486,7 +1256,7 @@ if uploaded_files:
             for idx, r in enumerate(cnpjs_unicos[:4]):
                 is_imp = r.get("Importacao", "Nao") == "Sim"
                 cor    = "#1565C0" if is_imp else "#FF8000"
-                pais_info = f" | País Domínio: {r.get('Cod Pais (Dom)', '')}" if is_imp else ""
+                pais_info = f" | País Dom.: {r.get('Cod Pais (Dom)', '')}" if is_imp else ""
                 with cols[idx]:
                     st.markdown(
                         f'<div class="cnpj-badge" style="color:{cor};border-color:{cor};">'
