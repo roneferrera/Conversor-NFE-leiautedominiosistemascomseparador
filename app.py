@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V3.4-FINAL"
+VERSAO = "V3.5-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -57,9 +57,6 @@ CST_ENTRADA_SAIDA = {
     "73": "06", "74": "08", "70": "04", "99": "49",
 }
 
-# ─────────────────────────────────────────────
-# TABELA DE PAÍSES: BACEN → Código Interno Domínio
-# ─────────────────────────────────────────────
 PAISES_BACEN_PARA_DOMINIO = {
     "0132": 1,   "7560": 2,   "0175": 3,   "0230": 4,   "0370": 5,
     "0400": 6,   "0418": 7,   "0434": 8,   "0477": 9,   "0531": 10,
@@ -76,47 +73,45 @@ PAISES_BACEN_PARA_DOMINIO = {
     "2003": 61,  "2070": 62,  "2100": 63,  "2127": 64,  "2151": 65,
     "2186": 66,  "2291": 67,  "2321": 68,  "2356": 69,  "2399": 70,
     "2402": 71,  "2445": 72,  "2453": 73,  "2461": 74,
-    "2484": 75,  # ESPANHA
-    "2496": 76,  # ESTADOS UNIDOS
-    "2518": 77,  "2534": 78,  "2550": 79,  "2593": 80,
-    "2674": 81,  "2712": 82,  "2755": 83,  "2810": 84,  "2836": 85,
-    "2895": 86,  "2917": 87,  "2933": 88,  "2976": 89,  "3018": 90,
-    "3050": 91,  "3093": 92,  "3107": 93,  "3131": 94,  "3174": 95,
-    "3204": 96,  "3212": 97,  "3255": 98,  "3298": 99,  "3310": 100,
-    "3344": 101, "3352": 102, "3360": 103, "3417": 104, "3450": 105,
-    "3484": 106, "3492": 107, "3557": 108, "3573": 109, "3611": 110,
-    "3654": 111, "3697": 112, "3727": 113, "3751": 114, "3794": 115,
-    "3808": 116, "3832": 117, "3867": 118, "3883": 119, "3913": 120,
-    "3964": 121, "3999": 122, "4030": 123, "4111": 124, "4200": 125,
-    "4235": 126, "4260": 127, "4278": 128, "4316": 129, "4340": 130,
-    "4383": 131, "4405": 132, "4421": 133, "4456": 134, "4472": 135,
-    "4499": 136, "4502": 137, "4553": 138, "4588": 139, "4618": 140,
-    "4642": 141, "4677": 142, "4723": 143, "4740": 144, "4766": 145,
-    "4774": 146, "4855": 147, "4880": 148, "4936": 149, "4944": 150,
-    "4952": 151, "5010": 152, "5053": 153, "5070": 154, "5088": 155,
-    "5096": 156, "5177": 157, "5215": 158, "5258": 159, "5282": 160,
-    "5380": 161, "5428": 162, "5487": 163, "5568": 164, "5665": 165,
-    "5738": 166, "5754": 167, "5762": 168, "5800": 169, "5835": 170,
-    "5851": 171, "5894": 172, "5932": 173, "5991": 174, "6033": 175,
-    "6076": 176, "6114": 177, "6238": 178, "6254": 179, "6289": 180,
-    "6300": 181, "6327": 182, "6408": 183, "6432": 184, "6459": 185,
-    "6505": 186, "6513": 187, "6548": 188, "6580": 189, "6599": 190,
-    "6645": 191, "6700": 192, "6750": 193, "6769": 194, "6777": 195,
-    "6781": 196, "6793": 197, "6807": 198, "6815": 199, "6858": 200,
-    "6866": 201, "6904": 202, "6912": 203, "7005": 204, "7030": 205,
-    "7056": 206, "7102": 207, "7153": 208, "7200": 209, "7285": 210,
-    "7315": 211, "7358": 212, "7370": 213, "7412": 214, "7447": 215,
-    "7455": 216, "7501": 217, "7544": 218, "7552": 219, "7590": 220,
-    "7595": 221, "7641": 222, "7676": 223, "7706": 224, "7722": 225,
-    "7757": 226, "7765": 227, "7773": 228, "7781": 229, "7820": 230,
-    "7838": 231, "7889": 232, "7919": 233, "7951": 234, "7994": 235,
-    "8001": 236, "8052": 237, "8079": 238, "8087": 239, "8109": 240,
-    "8150": 241, "8168": 242, "8176": 243, "8230": 244, "8273": 245,
-    "8281": 248, "8311": 249, "8338": 250, "8346": 251, "8451": 252,
-    "8478": 253, "8486": 254, "8494": 255, "8508": 256, "8516": 257,
-    "8524": 258, "8532": 259, "8540": 260, "8559": 261, "8567": 262,
-    "8575": 263, "8583": 264, "8591": 265, "8605": 266, "8613": 267,
-    "8630": 268,
+    "2484": 75,  "2496": 76,  "2518": 77,  "2534": 78,  "2550": 79,
+    "2593": 80,  "2674": 81,  "2712": 82,  "2755": 83,  "2810": 84,
+    "2836": 85,  "2895": 86,  "2917": 87,  "2933": 88,  "2976": 89,
+    "3018": 90,  "3050": 91,  "3093": 92,  "3107": 93,  "3131": 94,
+    "3174": 95,  "3204": 96,  "3212": 97,  "3255": 98,  "3298": 99,
+    "3310": 100, "3344": 101, "3352": 102, "3360": 103, "3417": 104,
+    "3450": 105, "3484": 106, "3492": 107, "3557": 108, "3573": 109,
+    "3611": 110, "3654": 111, "3697": 112, "3727": 113, "3751": 114,
+    "3794": 115, "3808": 116, "3832": 117, "3867": 118, "3883": 119,
+    "3913": 120, "3964": 121, "3999": 122, "4030": 123, "4111": 124,
+    "4200": 125, "4235": 126, "4260": 127, "4278": 128, "4316": 129,
+    "4340": 130, "4383": 131, "4405": 132, "4421": 133, "4456": 134,
+    "4472": 135, "4499": 136, "4502": 137, "4553": 138, "4588": 139,
+    "4618": 140, "4642": 141, "4677": 142, "4723": 143, "4740": 144,
+    "4766": 145, "4774": 146, "4855": 147, "4880": 148, "4936": 149,
+    "4944": 150, "4952": 151, "5010": 152, "5053": 153, "5070": 154,
+    "5088": 155, "5096": 156, "5177": 157, "5215": 158, "5258": 159,
+    "5282": 160, "5380": 161, "5428": 162, "5487": 163, "5568": 164,
+    "5665": 165, "5738": 166, "5754": 167, "5762": 168, "5800": 169,
+    "5835": 170, "5851": 171, "5894": 172, "5932": 173, "5991": 174,
+    "6033": 175, "6076": 176, "6114": 177, "6238": 178, "6254": 179,
+    "6289": 180, "6300": 181, "6327": 182, "6408": 183, "6432": 184,
+    "6459": 185, "6505": 186, "6513": 187, "6548": 188, "6580": 189,
+    "6599": 190, "6645": 191, "6700": 192, "6750": 193, "6769": 194,
+    "6777": 195, "6781": 196, "6793": 197, "6807": 198, "6815": 199,
+    "6858": 200, "6866": 201, "6904": 202, "6912": 203, "7005": 204,
+    "7030": 205, "7056": 206, "7102": 207, "7153": 208, "7200": 209,
+    "7285": 210, "7315": 211, "7358": 212, "7370": 213, "7412": 214,
+    "7447": 215, "7455": 216, "7501": 217, "7544": 218, "7552": 219,
+    "7590": 220, "7595": 221, "7641": 222, "7676": 223, "7706": 224,
+    "7722": 225, "7757": 226, "7765": 227, "7773": 228, "7781": 229,
+    "7820": 230, "7838": 231, "7889": 232, "7919": 233, "7951": 234,
+    "7994": 235, "8001": 236, "8052": 237, "8079": 238, "8087": 239,
+    "8109": 240, "8150": 241, "8168": 242, "8176": 243, "8230": 244,
+    "8273": 245, "8281": 248, "8311": 249, "8338": 250, "8346": 251,
+    "8451": 252, "8478": 253, "8486": 254, "8494": 255, "8508": 256,
+    "8516": 257, "8524": 258, "8532": 259, "8540": 260, "8559": 261,
+    "8567": 262, "8575": 263, "8583": 264, "8591": 265, "8605": 266,
+    "8613": 267, "8630": 268,
 }
 
 PAISES_NOME_PARA_DOMINIO = {
@@ -255,18 +250,11 @@ def somente_numeros(valor: str) -> str:
     return re.sub(r"[^0-9]", "", valor or "")
 
 def extrair_chave_nfe(nfe_root) -> str:
-    """
-    Extrai a chave de 44 dígitos da NF-e.
-    V3.4: usa re.sub para garantir remoção do prefixo 'NFe'
-    e valida que o resultado tem exatamente 44 dígitos.
-    """
     inf_nfe = nfe_root.find("nfe:infNFe", NS)
     if inf_nfe is None:
         return ""
     id_attr = inf_nfe.get("Id", "")
-    # Remove prefixo 'NFe' se existir
     chave = re.sub(r"^NFe", "", id_attr)
-    # Garante somente dígitos e comprimento 44
     chave_num = re.sub(r"[^0-9]", "", chave)
     return chave_num if len(chave_num) == 44 else chave
 
@@ -433,7 +421,10 @@ def extrair_pis_cofins(det) -> dict:
     return resultado
 
 # ─────────────────────────────────────────────
-# REGISTRO 0100
+# REGISTRO 0100 – 92 campos
+# V3.5: campos numéricos/decimais que não se aplicam ficam VAZIOS (não "N")
+# Campos corrigidos: 50(RS ST), 53(RS val unit ST), 54(RS MVA), 55(RS grupo ST),
+#                   57(MS incentivo), 58(DF regime), 60(PE tipo produto)
 # ─────────────────────────────────────────────
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
@@ -461,15 +452,102 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
+
+    # ── 92 campos com tipos corretos ─────────────────────────────────
+    # Campos numéricos/decimais que não se aplicam = "" (vazio), não "N"
     campos = [
-        "0100", cod_prod, descricao, "", ncm, "", "", "", cod_grupo,
-        unidade, "N", "O", "", "", "", "N", "",
-        fmt_decimal(val_unit, 3), "", "", cst_icms, aliq_icms, aliq_ipi, "M",
-        "", "N", "", "", "", "", "", "", "", "", "N", "", "", "", "N", "",
-        "", "", "N", "", "", "", "N", "N", "", "", "", "", "", "", "N",
-        "", "", "", "", "N", "", "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", cest, "", "",
+        "0100",                    # 1  Fixo
+        cod_prod,                  # 2  Código produto
+        descricao,                 # 3  Descrição
+        "",                        # 4  Código NBM
+        ncm,                       # 5  NCM
+        "",                        # 6  NCM Exterior (Numérico) → vazio
+        "",                        # 7  Código barras
+        "",                        # 8  Cód. imposto importação (Numérico) → vazio
+        cod_grupo,                 # 9  Grupo produtos
+        unidade,                   # 10 Unidade medida
+        "N",                       # 11 Unid. medida inventária diferente (S/N)
+        "O",                       # 12 Tipo produto (A/M/V/O)
+        "",                        # 13 Tipo arma (Numérico) → vazio
+        "",                        # 14 Descrição arma
+        "",                        # 15 Tipo medicamento (Numérico) → vazio
+        "N",                       # 16 Serviço ISSQN (S/N)
+        "",                        # 17 Código chassi
+        fmt_decimal(val_unit, 3),  # 18 Valor unitário
+        "",                        # 19 Qtd inicial estoque
+        "",                        # 20 Valor inicial estoque
+        cst_icms,                  # 21 CST ICMS (Numérico)
+        aliq_icms,                 # 22 Alíquota ICMS
+        aliq_ipi,                  # 23 Alíquota IPI
+        "M",                       # 24 Periodicidade IPI (D/M)
+        "",                        # 25 Observação
+        "N",                       # 26 Exporta DNF (S/N)
+        "",                        # 27 Ex TIPI
+        "",                        # 28 DNF espécie (Numérico) → vazio
+        "",                        # 29 DNF unid. medida (Numérico) → vazio
+        "",                        # 30 DNF fator conversão
+        "",                        # 31 DNF cód. produto (Numérico) → vazio
+        "",                        # 32 DNF capacidade volumétrica (Numérico) → vazio
+        "",                        # 33 SE/DIC EAN
+        "",                        # 34 SE/DIC cód. produto relevante (Numérico) → vazio
+        "N",                       # 35 SCANC gerar (S/N)
+        "",                        # 36 SCANC cód. produto (Numérico) → vazio
+        "N",                       # 37 SCANC gasolina A (S/N)
+        "",                        # 38 SCANC tipo produto
+        "N",                       # 39 GRF-CTB gerar (S/N)
+        "",                        # 40 GRF-CTB cód. produto (Numérico) → vazio
+        "",                        # 41 DIEF unidade
+        "",                        # 42 DIEF tipo produto/serviço (Numérico) → vazio
+        "N",                       # 43 88ST gerar (S/N)
+        "",                        # 44 88ST cód. produto tabela Sefaz (Numérico) → vazio
+        "",                        # 45 GO inf. complementares IPM DPI
+        "",                        # 46 GO cód. produto/serviço IPM DPI (Numérico) → vazio
+        "N",                       # 47 GO produto relacionado (S/N)
+        "N",                       # 48 AM cesta básica (S/N)
+        "",                        # 49 AM cód. produto DAM (Numérico) → vazio
+        "",                        # 50 RS produto ST (S/N → mas é Caractere, ok)
+        "",                        # 51 RS data início ST (Data) → vazio
+        "",                        # 52 RS produto preço tabelado (S/N)
+        "",                        # 53 RS valor unitário ST (Decimal) → VAZIO (era "N" → ERRO)
+        "",                        # 54 RS MVA ST (Decimal) → VAZIO (era "N" → ERRO)
+        "",                        # 55 RS grupo ST (Numérico) → VAZIO (era "N" → ERRO)
+        "N",                       # 56 PR equipamento ECF (S/N)
+        "",                        # 57 MS incentivo fiscal (Numérico) → VAZIO (era "N" → ERRO)
+        "",                        # 58 DF regime especial (Numérico) → VAZIO (era "N" → ERRO)
+        "",                        # 59 DF item padrão regime especial (Numérico) → vazio
+        "",                        # 60 PE tipo produto (Numérico) → VAZIO (era "N" → ERRO)
+        "N",                       # 61 SP controla ressarcimento Cat 17/99 (S/N)
+        "",                        # 62 SP data saldo inicial Cat 17/99 (Data) → vazio
+        "",                        # 63 SP valor unitário Cat 17/99 (Decimal) → vazio
+        "",                        # 64 SP quantidade Cat 17/99 (Decimal) → vazio
+        "",                        # 65 SP valor final Cat 17/99 (Decimal) → vazio
+        "",                        # 66 SPED gênero (Numérico) → vazio
+        "",                        # 67 SPED cód. serviço (Numérico) → vazio
+        "",                        # 68 SPED tipo item (Numérico) → vazio
+        "",                        # 69 SPED classificação (Numérico) → vazio
+        "",                        # 70 SPED conta estoque em poder (Numérico) → vazio
+        "",                        # 71 SPED conta estoque terceiros (Numérico) → vazio
+        "",                        # 72 SPED conta estoque de terceiros (Numérico) → vazio
+        "",                        # 73 SPED tipo receita
+        "",                        # 74 SPED energia/gás (Numérico) → vazio
+        "",                        # 75 Data cadastro (Data) → vazio
+        "N",                       # 76 Produto escriturado LMC (S/N)
+        "",                        # 77 Cód. combustível DF
+        "",                        # 78 Cód. combustível ANP
+        "N",                       # 79 Produto relacionado MP 540/2011 (S/N)
+        "",                        # 80 Permite descrição complementar
+        "",                        # 81 Cód. atividade INSS Folha
+        "",                        # 82 DACON tipo produto
+        "",                        # 83 DACON crédito presumido (Numérico) → vazio
+        "",                        # 84 Desconsiderar (Numérico) → vazio
+        "",                        # 85 SPED conta estoque em processo (Numérico) → vazio
+        "",                        # 86 SPED conta histórico em processo (Numérico) → vazio
+        "",                        # 87 SPED conta estoque acabado (Numérico) → vazio
+        "",                        # 88 SPED conta histórico acabado (Numérico) → vazio
+        cest,                      # 89 Código CEST (Numérico)
+        "",                        # 90 Registro exportação (Numérico) → vazio
+        "",                        # 91 Identificador
+        "",                        # 92 (reserva)
     ]
     while len(campos) < 92:
         campos.append("")
@@ -477,26 +555,93 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     return pipe_join(campos)
 
 # ─────────────────────────────────────────────
-# REGISTRO 0110
+# REGISTRO 0110 – 70 campos
+# V3.5: campos numéricos/decimais que não se aplicam ficam VAZIOS (não "N")
+# Campos corrigidos: 54(Valor unitário ST Decimal), 57(RS Cód VA Numérico),
+#                   60(Alíq PIS alt. Decimal), 63(RS % base cálculo Decimal)
 # ─────────────────────────────────────────────
 def gerar_registro_0110(det) -> str:
     pc = extrair_pis_cofins(det)
     ct = pc["class_trib"]
     return pipe_join([
-        "0110", "Inicial", pc["cst_e"], "", "01", "N", "N",
-        pc["aliq_pis_e"], pc["aliq_cof_e"], "N", "N", "", "", "", "",
-        pc["cst_s"], "N", "", "", "", "N", pc["aliq_pis_s"], pc["aliq_cof_s"],
-        "N", "N", "", "", "", "", "", "", "N", "N", "", "", "", "", "", "M",
-        "", "N", "N", "N", "", "N", "", "N", "", "", "", "", "", "", "N",
-        "", "", "N", "", "", "N", "", "N", "N", "N", ct, ct, "N", "N",
+        "0110",           # 1  Fixo
+        "Inicial",        # 2  Descrição vigência
+        pc["cst_e"],      # 3  CST Entrada (Numérico)
+        "",               # 4  Vínculo Crédito (Numérico) → vazio
+        "01",             # 5  Base Crédito (Numérico)
+        "N",              # 6  Crédito proporcional (S/N)
+        "N",              # 7  Crédito alíq. diferenciada (S/N)
+        pc["aliq_pis_e"], # 8  Alíquota PIS Entrada (Decimal 4)
+        pc["aliq_cof_e"], # 9  Alíquota COFINS Entrada (Decimal 4)
+        "N",              # 10 Crédito por unidade medida (S/N)
+        "N",              # 11 Unidade tributada diferente (S/N)
+        "",               # 12 Unidade tributável Entrada
+        "",               # 13 Fator conversão Entrada (Decimal 6) → vazio
+        "",               # 14 Valor PIS Entrada (Decimal 4) → vazio
+        "",               # 15 Valor COFINS Entrada (Decimal 4) → vazio
+        pc["cst_s"],      # 16 CST Saída (Numérico)
+        "N",              # 17 Tipo contribuição (N/C/S)
+        "",               # 18 Natureza receita (Numérico) → vazio
+        "",               # 19 Cód. recolhimento PIS Saída → vazio
+        "",               # 20 Cód. recolhimento COFINS Saída → vazio
+        "N",              # 21 Débito alíq. diferenciada (S/N)
+        pc["aliq_pis_s"], # 22 Alíquota PIS Saída (Decimal 4)
+        pc["aliq_cof_s"], # 23 Alíquota COFINS Saída (Decimal 4)
+        "N",              # 24 Débito por unidade medida (S/N)
+        "N",              # 25 Unidade tributada diferente Saída (S/N)
+        "",               # 26 Unidade tributável Saída
+        "",               # 27 Fator conversão Saída (Decimal 6) → vazio
+        "",               # 28 Valor PIS Saída (Decimal 4) → vazio
+        "",               # 29 Valor COFINS Saída (Decimal 4) → vazio
+        "",               # 30 Tabela SPED (Numérico) → vazio
+        "",               # 31 Marca/Grupo SPED (Numérico) → vazio
+        "N",              # 32 PIS cumulativo (S/N)
+        "N",              # 33 COFINS cumulativo (S/N)
+        "",               # 34 ICMS CST Entradas (Numérico) → vazio
+        "",               # 35 ICMS CST Saídas (Numérico) → vazio
+        "",               # 36 ICMS Alíquota (Decimal 2) → vazio
+        "",               # 37 IPI CST Entradas (Numérico) → vazio
+        "",               # 38 IPI CST Saídas (Numérico) → vazio
+        "M",              # 39 IPI Periodicidade (D/M)
+        "",               # 40 IPI Alíquota (Decimal 2) → vazio
+        "N",              # 41 SN PIS/COFINS (S/N)
+        "N",              # 42 Excluir base importação (S/N)
+        "N",              # 43 FUNDEPEC GO (S/N)
+        "",               # 44 Tipo produto FUNDEPEC (Numérico) → vazio
+        "N",              # 45 PRODEPE PE (S/N)
+        "",               # 46 Cód. apuração PRODEPE → vazio
+        "N",              # 47 Redução base (S/N)
+        "",               # 48 % redução base PIS/COFINS (Decimal 2) → vazio
+        "",               # 49 SN tipo tributação (Numérico) → vazio
+        "",               # 50 Cód. recolhimento PIS Entrada (Numérico) → vazio
+        "",               # 51 Cód. recolhimento COFINS Entrada (Numérico) → vazio
+        "",               # 52 Base cálculo ST → vazio
+        "",               # 53 % margem ST (Decimal 2) → vazio
+        "",               # 54 Valor unitário ST (Decimal 2) → VAZIO (era "N" → ERRO)
+        "",               # 55 IPI cód. recolhimento → vazio
+        "N",              # 56 RS Detalhamento VA/VB (S/N)
+        "",               # 57 RS Cód. VA (Numérico) → VAZIO (era "N" → ERRO)
+        "",               # 58 RS Cód. VB (Numérico) → vazio
+        "N",              # 59 Bebidas frias SN (S/N)
+        "",               # 60 Alíquota PIS alt. (Decimal 4) → VAZIO (era "N" → ERRO)
+        "",               # 61 Alíquota COFINS alt. (Decimal 4) → vazio
+        "N",              # 62 RS ressarcimento ICMS ST (S/N)
+        "",               # 63 RS % base cálculo (Decimal 2) → VAZIO (era "N" → ERRO)
+        "N",              # 64 RS PMPF combustíveis (S/N)
+        "N",              # 65 ES interestaduais (S/N)
+        "N",              # 66 ES internas (S/N)
+        ct,               # 67 IBS cClassTrib (Caractere 6)
+        ct,               # 68 CBS cClassTrib (Caractere 6)
+        "N",              # 69 IBS tabela NCM/NBS (S/N)
+        "N",              # 70 CBS tabela NCM/NBS (S/N)
     ])
 
 # ─────────────────────────────────────────────
-# REGISTRO 1000 – V3.4
-# Correções:
-#   - Campo 53 (Possui benefício fiscal): sempre "N" explícito
-#   - Campo 54 (Chave NF-e): usa extrair_chave_nfe() — 44 dígitos limpos
-#   - Campo 70 (Tipo doc. importação): fixo "1" para importação
+# REGISTRO 1000 – 98 campos
+# V3.5: Campo 51 (Data parecer fiscal) corrigido para VAZIO
+#        Campo 70 fixo = "1" para importação
+#        Campo 53 = "N" explícito
+#        Campo 54 = chave 44 dígitos limpa
 # ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
@@ -537,7 +682,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     v_outro  = fmt_decimal(get_text(total, "nfe:vOutro"))
     v_icms_d = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
 
-    # ── V3.4: Chave NF-e limpa (44 dígitos, sem prefixo NFe) ─────────
     chave = extrair_chave_nfe(nfe_root)
 
     transp        = nfe_root.find("nfe:infNFe/nfe:transp", NS)
@@ -556,7 +700,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
 
-    # ── V3.3: Campo 70 fixo = "1" para importação ────────────────────
     tipo_doc_importacao = "1" if importacao else ""
 
     return pipe_join([
@@ -570,11 +713,11 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         nNF,                  # 8
         serie,                # 9
         "",                   # 10
-        dhEmi,                # 11
-        dhEmi,                # 12
-        v_nf,                 # 13
+        dhEmi,                # 11 Data entrada
+        dhEmi,                # 12 Data emissão
+        v_nf,                 # 13 Valor contábil
         "",                   # 14
-        obs_fisco,            # 15
+        obs_fisco,            # 15 Observação fiscal
         mod_frete,            # 16
         emitente_nf,          # 17
         "",                   # 18
@@ -582,7 +725,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         "",                   # 20
         "",                   # 21
         "",                   # 22
-        "",                   # 23
+        "",                   # 23 Data visto MG (Data) → VAZIO
         "",                   # 24
         "",                   # 25
         v_frete,              # 26
@@ -607,19 +750,19 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         "",                   # 45
         "",                   # 46
         "",                   # 47
-        "",                   # 48
+        "",                   # 48 Competência (Data) → VAZIO
         "",                   # 49
-        "",                   # 50
-        "",                   # 51
-        n_di,                 # 52
-        "N",                  # 53 ← V3.4: "Possui benefício fiscal" = N (explícito)
-        chave,                # 54 ← V3.4: Chave 44 dígitos limpa
+        "",                   # 50 Número parecer fiscal
+        "",                   # 51 Data parecer fiscal (Data) → VAZIO (era n_di → ERRO)
+        n_di,                 # 52 Número declaração de importação ← CORRETO
+        "N",                  # 53 Possui benefício fiscal (S/N)
+        chave,                # 54 Chave NF-e (44 dígitos)
         "",                   # 55
         "",                   # 56
         "",                   # 57
         "",                   # 58
         "",                   # 59
-        "1",                  # 60
+        "1",                  # 60 Modalidade importação
         "",                   # 61
         "",                   # 62
         "",                   # 63
@@ -629,7 +772,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         "",                   # 67
         "",                   # 68
         "",                   # 69
-        tipo_doc_importacao,  # 70 ← V3.3: fixo "1" para importação
+        tipo_doc_importacao,  # 70 Tipo doc. importação = "1"
         "",                   # 71
         "",                   # 72
         "",                   # 73
@@ -641,7 +784,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         "",                   # 79
         "",                   # 80
         "",                   # 81
-        "",                   # 82
+        "",                   # 82 Data escrituração (Data) → VAZIO
         "",                   # 83
         "",                   # 84
         "",                   # 85
@@ -1174,24 +1317,28 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V3.4-FINAL — Correcao dos erros de importacao no Dominio</h4>
+        <h4>V3.5-FINAL — Correcao de todos os erros de estrutura (Erros.xls)</h4>
         <ul>
-          <li><b>1000 campo 53</b> (Possui beneficio fiscal): corrigido para <b>N</b> explícito — eliminado o erro "Voce deve informar S ou N"</li>
-          <li><b>1000 campo 54</b> (Chave NF-e): nova funcao <code>extrair_chave_nfe()</code> garante exatamente 44 digitos numericos, sem prefixo "NFe" — eliminado o erro "Chave da NF-e em branco"</li>
-          <li>Resumo exibe coluna <b>Chave NF-e</b> para conferência visual</li>
+          <li><b>0100 campo 55</b> (RS - Grupo ST, Numérico): era <code>N</code> → agora <b>vazio</b></li>
+          <li><b>0100 campo 60</b> (PE - Tipo do produto, Numérico): era <code>N</code> → agora <b>vazio</b></li>
+          <li><b>0110 campo 54</b> (Valor unitário ST, Decimal): era <code>N</code> → agora <b>vazio</b></li>
+          <li><b>0110 campo 57</b> (RS - Cód. VA, Numérico): era <code>N</code> → agora <b>vazio</b></li>
+          <li><b>0110 campo 60</b> (Alíquota PIS alt., Decimal): era <code>N</code> → agora <b>vazio</b></li>
+          <li><b>0110 campo 63</b> (RS % base cálculo, Decimal): era <code>N</code> → agora <b>vazio</b></li>
+          <li><b>1000 campo 51</b> (Data parecer fiscal, Data): recebia o número da DI → agora <b>vazio</b></li>
+          <li><b>1000 campo 52</b> (Número DI): confirmado na posição correta</li>
         </ul>
-        <h4>V3.3-FINAL — Campo 70 do 1000 fixo = 1 | IBS/CBS 1030 revisado</h4>
+        <h4>V3.4-FINAL</h4>
         <ul>
-          <li><b>1000 campo 70</b>: Fixo <b>1</b> para importacao</li>
-          <li><b>1030 campos 104-111</b>: IBS/CBS com variaveis separadas (ibs_class_trib / cbs_class_trib)</li>
+          <li>1000 campo 53: N explícito | campo 54: chave 44 dígitos limpa</li>
         </ul>
-        <h4>V3.2-FINAL — Codigo de Pais convertido para tabela interna Dominio</h4>
+        <h4>V3.3-FINAL</h4>
         <ul>
-          <li><b>0020 campo 11</b>: Codigo interno da planilha Paises.xls (ex: 2496 BACEN → 76 Dominio)</li>
+          <li>1000 campo 70: fixo 1 para importação</li>
         </ul>
-        <h4>V3.0/3.1-FINAL</h4>
+        <h4>V3.2-FINAL</h4>
         <ul>
-          <li>Layout oficial Dominio: 0020 (33 campos), 1000 (98), 1030 (111), 1097 (35)</li>
+          <li>0020 campo 11: código país tabela interna Domínio (BACEN → Domínio)</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
