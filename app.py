@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V3.1-FINAL"
+VERSAO = "V3.2-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -56,6 +56,388 @@ CST_ENTRADA_SAIDA = {
     "50": "01", "51": "02", "52": "08",
     "73": "06", "74": "08", "70": "04", "99": "49",
 }
+
+# ─────────────────────────────────────────────
+# TABELA DE PAÍSES: BACEN → Código Interno Domínio
+# Chave: cPais do XML (BACEN), Valor: código interno da planilha Países.xls
+# ─────────────────────────────────────────────
+PAISES_BACEN_PARA_DOMINIO = {
+    # Mapeamento BACEN → Domínio (planilha Países.xls)
+    "0132": 1,   # AFEGANISTAO
+    "7560": 2,   # AFRICA DO SUL
+    "0175": 3,   # ALBANIA
+    "0230": 4,   # ALEMANHA
+    "0370": 5,   # ANDORRA
+    "0400": 6,   # ANGOLA
+    "0418": 7,   # ANGUILLA
+    "0434": 8,   # ANTIGUA E BARBUDA
+    "0477": 9,   # ANTILHAS HOLANDESAS
+    "0531": 10,  # ARABIA SAUDITA
+    "0590": 11,  # ARGELIA
+    "0639": 12,  # ARGENTINA
+    "0647": 13,  # ARMENIA
+    "0655": 14,  # ARUBA
+    "0698": 15,  # AUSTRALIA
+    "0728": 16,  # AUSTRIA
+    "0736": 17,  # AZERBAIJAO
+    "0779": 18,  # BAHAMAS
+    "0809": 19,  # BAHREIN
+    "0817": 20,  # BANGLADESH
+    "0833": 21,  # BARBADOS
+    "0850": 22,  # BELARUS
+    "0876": 23,  # BELGICA
+    "0884": 24,  # BELIZE
+    "0906": 25,  # BENIN
+    "0930": 26,  # BERMUDAS
+    "0973": 27,  # BOLIVIA
+    "0981": 28,  # BOSNIA-HERZEGOVINA
+    "1015": 29,  # BOTSUANA
+    "1058": 30,  # BRASIL
+    "1082": 31,  # BRUNEI
+    "1112": 32,  # BULGARIA
+    "1155": 33,  # BURKINA FASO
+    "1198": 34,  # BURUNDI
+    "1279": 35,  # BUTAO
+    "1376": 36,  # CABO VERDE
+    "1414": 37,  # CAMAROES
+    "1457": 38,  # CAMBOJA
+    "1490": 39,  # CANADA
+    "1504": 40,  # GUERNSEY ILHA DO CANAL
+    "1511": 41,  # CANARIAS
+    "1546": 42,  # CATAR
+    "1554": 43,  # CAYMAN ILHA
+    "1589": 44,  # CAZAQUISTAO
+    "1600": 45,  # CHADE
+    "1635": 46,  # CHILE
+    "1651": 47,  # CHINA
+    "1694": 48,  # CHIPRE
+    "1716": 49,  # CHRISTMAS ILHA
+    "1750": 50,  # CINGAPURA / SINGAPURA
+    "1767": 51,  # COCOS KEELING
+    "1792": 52,  # COLOMBIA
+    "1830": 53,  # COMORES
+    "1872": 54,  # CONGO REP DEMOCRATICA
+    "1880": 55,  # CONGO REP DO
+    "1902": 56,  # COOK ILHA
+    "1937": 57,  # COREIA DO NORTE
+    "1953": 58,  # COREIA DO SUL
+    "1961": 59,  # COSTA DO MARFIM
+    "1988": 60,  # COSTA RICA
+    "2003": 61,  # KUWAIT
+    "2070": 62,  # CROACIA
+    "2100": 63,  # CUBA
+    "2127": 64,  # DINAMARCA
+    "2151": 65,  # DJIBUTI
+    "2186": 66,  # DOMINICA ILHA
+    "2291": 67,  # EGITO
+    "2321": 68,  # EL SALVADOR
+    "2356": 69,  # EMIRADOS ARABES UNIDOS
+    "2399": 70,  # EQUADOR
+    "2402": 71,  # ERITREIA
+    "2445": 72,  # ESCOCIA
+    "2453": 73,  # ESLOVACA REP
+    "2461": 74,  # ESLOVENIA
+    "2496": 76,  # ESTADOS UNIDOS  ← este é o caso da nota atual
+    "2518": 77,  # ESTONIA
+    "2534": 78,  # ETIOPIA
+    "2550": 79,  # FALKLAND
+    "2593": 80,  # FEROE ILHAS
+    "2674": 81,  # FIJI
+    "2712": 82,  # FILIPINAS
+    "2755": 83,  # FINLANDIA
+    "2810": 84,  # FORMOSA TAIWAN
+    "2836": 85,  # FRANCA
+    "2895": 86,  # GABAO
+    "2917": 87,  # GALES
+    "2933": 88,  # GAMBIA
+    "2976": 89,  # GANA
+    "3018": 90,  # GEORGIA
+    "3050": 91,  # GIBRALTAR
+    "3093": 92,  # GRA-BRETANHA
+    "3107": 93,  # GRANADA
+    "3131": 94,  # GRECIA
+    "3174": 95,  # GROENLANDIA
+    "3204": 96,  # GUADALUPE
+    "3212": 97,  # GUAM
+    "3255": 98,  # GUATEMALA
+    "3298": 99,  # GUIANA
+    "3310": 100, # GUIANA FRANCESA
+    "3344": 101, # GUINE
+    "3352": 102, # GUINE-BISSAU
+    "3360": 103, # GUINE-EQUATORIAL
+    "3417": 104, # HAITI
+    "3450": 105, # HOLANDA / PAISES BAIXOS
+    "3484": 106, # HONDURAS
+    "3492": 107, # HONG KONG
+    "3557": 108, # HUNGRIA
+    "3573": 109, # IEMEN
+    "3611": 110, # INDIA
+    "3654": 111, # INDONESIA
+    "3697": 112, # INGLATERRA
+    "3727": 113, # IRA
+    "3751": 114, # IRAQUE
+    "3794": 115, # IRLANDA
+    "3808": 116, # IRLANDA DO NORTE
+    "3832": 117, # ISLANDIA
+    "3867": 118, # ISRAEL
+    "3883": 119, # ITALIA
+    "3913": 120, # SERVIA (antiga Iugoslávia)
+    "3964": 121, # JAMAICA
+    "3999": 122, # JAPAO
+    "4030": 123, # JOHNSTON ILHAS
+    "4111": 124, # JORDANIA
+    "4200": 125, # KIRIBATI
+    "4235": 126, # LAOS
+    "4260": 127, # LEBUAN
+    "4278": 128, # LESOTO
+    "4316": 129, # LETONIA
+    "4340": 130, # LIBANO
+    "4383": 131, # LIBERIA
+    "4405": 132, # LIBIA
+    "4421": 133, # LIECHTENSTEIN
+    "4456": 134, # LITUANIA
+    "4472": 135, # LUXEMBURGO
+    "4499": 136, # MACAU
+    "4502": 137, # MACEDONIA DO NORTE
+    "4553": 138, # MADAGASCAR
+    "4588": 139, # MADEIRA ILHA
+    "4618": 140, # MALASIA
+    "4642": 141, # MALAVI
+    "4677": 142, # MALDIVAS
+    "4723": 143, # MALI
+    "4740": 144, # MALTA
+    "4766": 145, # MAN ILHAS
+    "4774": 146, # MARIANAS DO NORTE
+    "4855": 147, # MARROCOS
+    "4880": 148, # MARSHALL ILHAS
+    "4936": 149, # MARTINICA
+    "4944": 150, # MAURICIO
+    "4952": 151, # MAURITANIA
+    "5010": 152, # MEXICO
+    "5053": 153, # MIANMAR
+    "5070": 154, # MICRONESIA
+    "5088": 155, # MIDWAY ILHAS
+    "5096": 156, # MOCAMBIQUE
+    "5177": 157, # MOLDAVIA
+    "5215": 158, # MONACO
+    "5258": 159, # MONGOLIA
+    "5282": 160, # MONTSERRAT ILHA
+    "5380": 161, # NAMIBIA
+    "5428": 162, # NAURU
+    "5487": 163, # NEPAL
+    "5568": 164, # NICARAGUA
+    "5665": 165, # NIGER
+    "5738": 166, # NIGERIA
+    "5754": 167, # NIUE ILHA
+    "5762": 168, # NORFOLK ILHA
+    "5800": 169, # NORUEGA
+    "5835": 170, # NOVA CALEDONIA
+    "5851": 171, # NOVA ZELANDIA
+    "5894": 172, # OMA
+    "5932": 173, # PALAU
+    "5991": 174, # PANAMA
+    "6033": 175, # PAPUA NOVA GUINE
+    "6076": 176, # PAQUISTAO
+    "6114": 177, # PARAGUAI
+    "6238": 178, # PERU
+    "6254": 179, # PITCAIRN ILHA
+    "6289": 180, # POLINESIA FRANCESA
+    "6300": 181, # POLONIA
+    "6327": 182, # PORTO RICO
+    "6408": 183, # PORTUGAL
+    "6432": 184, # QUENIA
+    "6459": 185, # QUIRGUIZ
+    "6505": 186, # REINO UNIDO
+    "6513": 187, # REP CENTRO-AFRICANA
+    "6548": 188, # REP DOMINICANA
+    "6580": 189, # REUNIAO ILHA
+    "6599": 190, # ROMENIA
+    "6645": 191, # RUANDA
+    "6700": 192, # RUSSIA
+    "6750": 193, # SAARA OCIDENTAL
+    "6769": 194, # SALOMAO ILHAS
+    "6777": 195, # SAMOA
+    "6781": 196, # SAMOA AMERICANA
+    "6793": 197, # SAN MARINO
+    "6807": 198, # SANTA HELENA
+    "6815": 199, # SANTA LUCIA
+    "6858": 200, # SAO CRISTOVAO E NEVES
+    "6866": 201, # SAO PEDRO E MIQUELON
+    "6904": 202, # SAO TOME E PRINCIPE
+    "6912": 203, # SAO VICENTE E GRANADINA
+    "7005": 204, # SENEGAL
+    "7030": 205, # SERRA LEOA
+    "7056": 206, # SEYCHELLE
+    "7102": 207, # SIRIA
+    "7153": 208, # SOMALIA
+    "7200": 209, # SRI LANKA
+    "7285": 210, # ESWATINI / SUAZILANDIA
+    "7315": 211, # SUDAO
+    "7358": 212, # SUECIA
+    "7370": 213, # SUICA
+    "7412": 214, # SURINAME
+    "7447": 215, # TADJIQUISTAO
+    "7455": 216, # TAILANDIA
+    "7501": 217, # TANZANIA
+    "7544": 218, # TCHECA REP
+    "7552": 219, # TERRITORIO BRITANICO OC INDICO
+    "7590": 220, # TIMOR LESTE
+    "7595": 221, # TOGO
+    "7641": 222, # TONGA
+    "7676": 223, # TOQUELAU ILHAS
+    "7706": 224, # TRINIDAD E TOBAGO
+    "7722": 225, # TUNISIA
+    "7757": 226, # TURCAS E CAICOS
+    "7765": 227, # TURCOMENISTAO
+    "7773": 228, # TURQUIA
+    "7781": 229, # TUVALU
+    "7820": 230, # UCRANIA
+    "7838": 231, # UGANDA
+    "7889": 232, # URUGUAI
+    "7919": 233, # UZBEQUISTAO
+    "7951": 234, # VANUATU
+    "7994": 235, # VATICANO
+    "8001": 236, # VENEZUELA
+    "8052": 237, # VIETNA
+    "8079": 238, # VIRGENS ILHAS BRITANICAS
+    "8087": 239, # VIRGENS ILHAS EUA
+    "8109": 240, # WAKE ILHA
+    "8150": 241, # WALLIS E FUTUNA
+    "8168": 242, # ZAMBIA
+    "8176": 243, # ZIMBABUE
+    "8230": 244, # ZONA DO CANAL DO PANAMA
+    "8273": 245, # MONTENEGRO
+    "8281": 248, # PACIFICO ILHAS EUA
+    "8311": 249, # QATAR
+    "8338": 250, # SAINT KITTS E NEVIS
+    "8346": 251, # SERVIA E MONTENEGRO
+    "8451": 252, # ALAND ILHAS
+    "8478": 253, # ANTARTICA
+    "8486": 254, # BONAIRE SAINT EUSTATIUS E SABA
+    "8494": 255, # BOUVET ILHA
+    "8508": 256, # CURACAO
+    "8516": 257, # HEARD E ILHAS MCDONALD
+    "8524": 258, # SAO MARTINHO PARTE FRANCESA
+    "8532": 259, # GEORGIA DO SUL E SANDWICH DO SUL
+    "8540": 260, # JERSEY ILHA DO CANAL
+    "8559": 261, # MAYOTTE
+    "8567": 262, # SAO BARTOLOMEU
+    "8575": 263, # SVALBARD E JAN MAYEN
+    "8583": 264, # TERRAS AUSTRAIS FRANCESAS
+    "8591": 265, # SAO MARTINHO PARTE HOLANDESA
+    "8605": 266, # PALESTINA
+    "8613": 267, # SUDAO DO SUL
+    "8630": 268, # GUERNSEY ILHA DO CANAL
+    # Espanha (adicionada pois é BACEN comum)
+    "2453": 75,  # ESPANHA — cPais BACEN 2453
+}
+
+# Nome do país → código Domínio (fallback por nome quando BACEN não bater)
+PAISES_NOME_PARA_DOMINIO = {
+    "AFEGANISTAO": 1, "AFRICA DO SUL": 2, "ALBANIA": 3, "ALEMANHA": 4,
+    "ANDORRA": 5, "ANGOLA": 6, "ANGUILLA": 7, "ANTIGUA E BARBUDA": 8,
+    "ANTILHAS HOLANDESAS": 9, "ARABIA SAUDITA": 10, "ARGELIA": 11,
+    "ARGENTINA": 12, "ARMENIA": 13, "ARUBA": 14, "AUSTRALIA": 15,
+    "AUSTRIA": 16, "AZERBAIJAO": 17, "BAHAMAS": 18, "BAHREIN": 19,
+    "BANGLADESH": 20, "BARBADOS": 21, "BELARUS": 22, "BELGICA": 23,
+    "BELIZE": 24, "BENIN": 25, "BERMUDAS": 26, "BOLIVIA": 27,
+    "BOSNIA-HERZEGOVINA": 28, "BOTSUANA": 29, "BRASIL": 30, "BRUNEI": 31,
+    "BULGARIA": 32, "BURKINA FASO": 33, "BURUNDI": 34, "BUTAO": 35,
+    "CABO VERDE": 36, "CAMAROES": 37, "CAMBOJA": 38, "CANADA": 39,
+    "CANARIAS": 41, "CATAR": 42, "CAYMAN": 43, "CAZAQUISTAO": 44,
+    "CHADE": 45, "CHILE": 46, "CHINA": 47, "CHIPRE": 48,
+    "CHRISTMAS": 49, "CINGAPURA": 50, "SINGAPURA": 50,
+    "COCOS": 51, "COLOMBIA": 52, "COMORES": 53,
+    "CONGO": 54, "COOK": 56, "COREIA DO NORTE": 57, "COREIA DO SUL": 58,
+    "COSTA DO MARFIM": 59, "COSTA RICA": 60, "KUWAIT": 61, "CROACIA": 62,
+    "CUBA": 63, "DINAMARCA": 64, "DJIBUTI": 65, "DOMINICA": 66,
+    "EGITO": 67, "EL SALVADOR": 68, "EMIRADOS ARABES UNIDOS": 69,
+    "EQUADOR": 70, "ERITREIA": 71, "ESCOCIA": 72, "ESLOVACA": 73,
+    "ESLOVENIA": 74, "ESPANHA": 75, "ESTADOS UNIDOS": 76, "ESTONIA": 77,
+    "ETIOPIA": 78, "FALKLAND": 79, "FEROE": 80, "FIJI": 81,
+    "FILIPINAS": 82, "FINLANDIA": 83, "FORMOSA": 84, "TAIWAN": 84,
+    "FRANCA": 85, "GABAO": 86, "GALES": 87, "GAMBIA": 88,
+    "GANA": 89, "GEORGIA": 90, "GIBRALTAR": 91, "GRA-BRETANHA": 92,
+    "GRANADA": 93, "GRECIA": 94, "GROENLANDIA": 95, "GUADALUPE": 96,
+    "GUAM": 97, "GUATEMALA": 98, "GUIANA": 99, "GUIANA FRANCESA": 100,
+    "GUINE": 101, "GUINE-BISSAU": 102, "GUINE-EQUATORIAL": 103,
+    "HAITI": 104, "HOLANDA": 105, "PAISES BAIXOS": 105, "HONDURAS": 106,
+    "HONG KONG": 107, "HUNGRIA": 108, "IEMEN": 109, "INDIA": 110,
+    "INDONESIA": 111, "INGLATERRA": 112, "IRA": 113, "IRAQUE": 114,
+    "IRLANDA": 115, "IRLANDA DO NORTE": 116, "ISLANDIA": 117,
+    "ISRAEL": 118, "ITALIA": 119, "SERVIA": 120, "JAMAICA": 121,
+    "JAPAO": 122, "JOHNSTON": 123, "JORDANIA": 124, "KIRIBATI": 125,
+    "LAOS": 126, "LEBUAN": 127, "LESOTO": 128, "LETONIA": 129,
+    "LIBANO": 130, "LIBERIA": 131, "LIBIA": 132, "LIECHTENSTEIN": 133,
+    "LITUANIA": 134, "LUXEMBURGO": 135, "MACAU": 136,
+    "MACEDONIA DO NORTE": 137, "MADAGASCAR": 138, "MADEIRA": 139,
+    "MALASIA": 140, "MALAVI": 141, "MALDIVAS": 142, "MALI": 143,
+    "MALTA": 144, "MAN": 145, "MARIANAS DO NORTE": 146, "MARROCOS": 147,
+    "MARSHALL": 148, "MARTINICA": 149, "MAURICIO": 150,
+    "MAURITANIA": 151, "MEXICO": 152, "MIANMAR": 153, "BIRMANIA": 153,
+    "MICRONESIA": 154, "MIDWAY": 155, "MOCAMBIQUE": 156, "MOLDAVIA": 157,
+    "MONACO": 158, "MONGOLIA": 159, "MONTSERRAT": 160, "NAMIBIA": 161,
+    "NAURU": 162, "NEPAL": 163, "NICARAGUA": 164, "NIGER": 165,
+    "NIGERIA": 166, "NIUE": 167, "NORFOLK": 168, "NORUEGA": 169,
+    "NOVA CALEDONIA": 170, "NOVA ZELANDIA": 171, "OMA": 172,
+    "PALAU": 173, "PANAMA": 174, "PAPUA NOVA GUINE": 175,
+    "PAQUISTAO": 176, "PARAGUAI": 177, "PERU": 178, "PITCAIRN": 179,
+    "POLINESIA FRANCESA": 180, "POLONIA": 181, "PORTO RICO": 182,
+    "PORTUGAL": 183, "QUENIA": 184, "QUIRGUIZ": 185, "REINO UNIDO": 186,
+    "REPUBLICA CENTRO-AFRICANA": 187, "REPUBLICA DOMINICANA": 188,
+    "REUNIAO": 189, "ROMENIA": 190, "RUANDA": 191, "RUSSIA": 192,
+    "SAARA OCIDENTAL": 193, "SALOMAO": 194, "SAMOA": 195,
+    "SAMOA AMERICANA": 196, "SAN MARINO": 197, "SANTA HELENA": 198,
+    "SANTA LUCIA": 199, "SAO CRISTOVAO E NEVES": 200,
+    "SAO PEDRO E MIQUELON": 201, "SAO TOME E PRINCIPE": 202,
+    "SAO VICENTE E GRANADINA": 203, "SENEGAL": 204, "SERRA LEOA": 205,
+    "SEYCHELLE": 206, "SIRIA": 207, "SOMALIA": 208, "SRI LANKA": 209,
+    "ESWATINI": 210, "SUAZILANDIA": 210, "SUDAO": 211, "SUECIA": 212,
+    "SUICA": 213, "SURINAME": 214, "TADJIQUISTAO": 215,
+    "TAILANDIA": 216, "TANZANIA": 217, "TCHECA": 218,
+    "TERRITORIO BRITANICO": 219, "TIMOR LESTE": 220, "TOGO": 221,
+    "TONGA": 222, "TOQUELAU": 223, "TRINIDAD E TOBAGO": 224,
+    "TUNISIA": 225, "TURCAS E CAICOS": 226, "TURCOMENISTAO": 227,
+    "TURQUIA": 228, "TUVALU": 229, "UCRANIA": 230, "UGANDA": 231,
+    "URUGUAI": 232, "UZBEQUISTAO": 233, "VANUATU": 234,
+    "VATICANO": 235, "VENEZUELA": 236, "VIETNA": 237,
+    "VIRGENS BRITANICAS": 238, "VIRGENS EUA": 239, "WAKE": 240,
+    "WALLIS E FUTUNA": 241, "ZAMBIA": 242, "ZIMBABUE": 243,
+    "ZONA DO CANAL DO PANAMA": 244, "MONTENEGRO": 245,
+    "QATAR": 249, "SAINT KITTS E NEVIS": 250,
+    "CURACAO": 256, "MAYOTTE": 261, "PALESTINA": 266,
+    "SUDAO DO SUL": 267,
+}
+
+def resolver_codigo_pais_dominio(c_pais_xml: str, x_pais_xml: str) -> str:
+    """
+    Converte o cPais do XML (código BACEN, ex: '2496')
+    para o código interno do Domínio Sistemas (ex: 76).
+    Estratégia:
+      1. Tenta pelo código BACEN (com zero-fill de 4 dígitos)
+      2. Fallback: busca por palavras-chave no nome do país
+      3. Se não encontrar, retorna o cPais original do XML
+    """
+    # Normaliza para 4 dígitos com zero à esquerda
+    c_pais_norm = (c_pais_xml or "").strip().zfill(4)
+
+    # 1. Busca direta pelo código BACEN
+    if c_pais_norm in PAISES_BACEN_PARA_DOMINIO:
+        return str(PAISES_BACEN_PARA_DOMINIO[c_pais_norm])
+
+    # 2. Fallback por nome do país
+    if x_pais_xml:
+        nome_upper = x_pais_xml.upper().strip()
+        # Busca exata
+        if nome_upper in PAISES_NOME_PARA_DOMINIO:
+            return str(PAISES_NOME_PARA_DOMINIO[nome_upper])
+        # Busca parcial (primeira palavra-chave que bater)
+        for chave, cod in PAISES_NOME_PARA_DOMINIO.items():
+            if chave in nome_upper or nome_upper in chave:
+                return str(cod)
+
+    # 3. Retorna o código original se não encontrar
+    return c_pais_xml or ""
 
 # ─────────────────────────────────────────────
 # HELPERS
@@ -140,7 +522,6 @@ def detectar_grupo(cfop: str, ncm: str, grupo_padrao: int) -> int:
     return g
 
 def is_nota_importacao(nfe_root) -> bool:
-    """Detecta importação por UF=EX no dest ou CFOP iniciando em 3."""
     dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     if dest is not None:
         ender = dest.find("nfe:enderDest", NS)
@@ -154,14 +535,7 @@ def is_nota_importacao(nfe_root) -> bool:
     return False
 
 def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str) -> tuple:
-    """
-    CNPJ para o registro 0000 (empresa que lança a nota):
-    - Nacional:   CNPJ do <dest>
-    - Importação: fallback informado pelo usuário
-    Retorna: (cnpj, origem)
-    """
     importacao = is_nota_importacao(nfe_root)
-
     if not importacao:
         dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
         if dest is not None:
@@ -171,16 +545,12 @@ def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str) -> tuple:
             cpf = get_text(dest, "nfe:CPF")
             if cpf:
                 return cpf, "XML — <dest><CPF>"
-
     if cnpj_fallback:
         return somente_numeros(cnpj_fallback), "Manual (fallback)"
-
-    # Último recurso: emitente
     emit = nfe_root.find("nfe:infNFe/nfe:emit", NS)
     cnpj_emit = get_text(emit, "nfe:CNPJ") if emit is not None else ""
     if cnpj_emit:
         return cnpj_emit, "XML — <emit><CNPJ> (fallback)"
-
     return "", "Nao encontrado"
 
 # ─────────────────────────────────────────────
@@ -191,9 +561,7 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
 
 # ─────────────────────────────────────────────
 # REGISTRO 0020 – Fornecedor
-# Layout: 33 campos
-# Importação → <dest> exterior: inscrição vazia, UF=EX, cPais BACEN
-# Nacional   → <emit>: CNPJ, dados normais
+# ALTERADO V3.2: campo 11 agora usa código interno Domínio (planilha Países.xls)
 # ─────────────────────────────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
@@ -206,7 +574,12 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         bairro      = get_text(ender, "nfe:xBairro")                 if ender is not None else ""
         cod_mun     = somente_numeros(get_text(ender, "nfe:cMun"))    if ender is not None else ""
         cep         = get_text(ender, "nfe:CEP")                     if ender is not None else ""
-        cod_pais    = somente_numeros(get_text(ender, "nfe:cPais"))   if ender is not None else ""
+
+        # ── ALTERAÇÃO V3.2: converte cPais BACEN → código interno Domínio ──
+        c_pais_xml  = get_text(ender, "nfe:cPais")                   if ender is not None else ""
+        x_pais_xml  = get_text(ender, "nfe:xPais")                   if ender is not None else ""
+        cod_pais    = resolver_codigo_pais_dominio(c_pais_xml, x_pais_xml)
+
         inscricao   = ""
         uf_campo    = "EX"
         ie          = ""
@@ -225,7 +598,7 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         cod_mun      = somente_numeros(get_text(ender, "nfe:cMun"))   if ender is not None else ""
         cep          = get_text(ender, "nfe:CEP")                    if ender is not None else ""
         uf_campo     = get_text(ender, "nfe:UF")                     if ender is not None else ""
-        cod_pais     = ""
+        cod_pais     = ""  # Nacional: campo país fica vazio
         ie           = get_text(emit, "nfe:IE")
         crt          = get_text(emit, "nfe:CRT")
         regime_map   = {"1": "M", "2": "E", "3": "N"}
@@ -243,7 +616,7 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         bairro,       # 8  - Bairro
         cod_mun,      # 9  - Código município
         uf_campo,     # 10 - UF (EX para exterior)
-        cod_pais,     # 11 - Código País BACEN (apenas exterior)
+        cod_pais,     # 11 - Código País DOMÍNIO (planilha Países.xls)
         cep,          # 12 - CEP
         ie,           # 13 - IE
         "",           # 14 - IM
@@ -365,81 +738,80 @@ def gerar_registro_0110(det) -> str:
     ct = pc["class_trib"]
 
     return pipe_join([
-        "0110",           # 1  - Fixo
-        "Inicial",        # 2  - Descrição vigência
-        pc["cst_e"],      # 3  - CST Entrada
-        "",               # 4  - Vínculo do Crédito
-        "01",             # 5  - Base do Crédito
-        "N",              # 6  - Crédito proporcional
-        "N",              # 7  - Crédito alíq. diferenciada
-        pc["aliq_pis_e"], # 8  - Alíquota PIS Entrada
-        pc["aliq_cof_e"], # 9  - Alíquota COFINS Entrada
-        "N",              # 10 - Crédito por unidade medida
-        "N",              # 11 - Unidade tributada diferente
-        "",               # 12 - Unidade tributável Entrada
-        "",               # 13 - Fator conversão Entrada
-        "",               # 14 - Valor PIS Entrada
-        "",               # 15 - Valor COFINS Entrada
-        pc["cst_s"],      # 16 - CST Saída
-        "N",              # 17 - Tipo contribuição
-        "",               # 18 - Natureza receita
-        "",               # 19 - Cód. recolhimento PIS Saída
-        "",               # 20 - Cód. recolhimento COFINS Saída
-        "N",              # 21 - Débito alíq. diferenciada
-        pc["aliq_pis_s"], # 22 - Alíquota PIS Saída
-        pc["aliq_cof_s"], # 23 - Alíquota COFINS Saída
-        "N",              # 24 - Débito por unidade medida
-        "N",              # 25 - Unidade tributada diferente Saída
-        "",               # 26 - Unidade tributável Saída
-        "",               # 27 - Fator conversão Saída
-        "",               # 28 - Valor PIS Saída
-        "",               # 29 - Valor COFINS Saída
-        "",               # 30 - Tabela SPED
-        "",               # 31 - Marca/Grupo SPED
-        "N",              # 32 - PIS cumulativo
-        "N",              # 33 - COFINS cumulativo
-        "",               # 34 - ICMS CST Entradas
-        "",               # 35 - ICMS CST Saídas
-        "",               # 36 - ICMS Alíquota
-        "",               # 37 - IPI CST Entradas
-        "",               # 38 - IPI CST Saídas
-        "M",              # 39 - IPI Periodicidade
-        "",               # 40 - IPI Alíquota
-        "N",              # 41 - SN PIS/COFINS
-        "N",              # 42 - Excluir base importação
-        "N",              # 43 - FUNDEPEC GO
-        "",               # 44 - Tipo produto FUNDEPEC
-        "N",              # 45 - PRODEPE PE
-        "",               # 46 - Cód. apuração PRODEPE
-        "N",              # 47 - Redução base
-        "",               # 48 - % redução base PIS/COFINS
-        "",               # 49 - SN tipo tributação
-        "",               # 50 - Cód. recolhimento PIS Entrada
-        "",               # 51 - Cód. recolhimento COFINS Entrada
-        "",               # 52 - Base cálculo ST
-        "",               # 53 - % margem ST
-        "",               # 54 - Valor unitário ST
-        "",               # 55 - IPI cód. recolhimento
-        "N",              # 56 - RS Detalhamento VA/VB
-        "",               # 57 - RS Cód. VA
-        "",               # 58 - RS Cód. VB
-        "N",              # 59 - Bebidas frias SN
-        "",               # 60 - Alíquota PIS alt.
-        "",               # 61 - Alíquota COFINS alt.
-        "N",              # 62 - RS ressarcimento ICMS ST
-        "",               # 63 - RS % base cálculo
-        "N",              # 64 - RS PMPF combustíveis
-        "N",              # 65 - ES interestaduais
-        "N",              # 66 - ES internas
-        ct,               # 67 - IBS cClassTrib
-        ct,               # 68 - CBS cClassTrib
-        "N",              # 69 - IBS tabela NCM/NBS
-        "N",              # 70 - CBS tabela NCM/NBS
+        "0110",           # 1
+        "Inicial",        # 2
+        pc["cst_e"],      # 3
+        "",               # 4
+        "01",             # 5
+        "N",              # 6
+        "N",              # 7
+        pc["aliq_pis_e"], # 8
+        pc["aliq_cof_e"], # 9
+        "N",              # 10
+        "N",              # 11
+        "",               # 12
+        "",               # 13
+        "",               # 14
+        "",               # 15
+        pc["cst_s"],      # 16
+        "N",              # 17
+        "",               # 18
+        "",               # 19
+        "",               # 20
+        "N",              # 21
+        pc["aliq_pis_s"], # 22
+        pc["aliq_cof_s"], # 23
+        "N",              # 24
+        "N",              # 25
+        "",               # 26
+        "",               # 27
+        "",               # 28
+        "",               # 29
+        "",               # 30
+        "",               # 31
+        "N",              # 32
+        "N",              # 33
+        "",               # 34
+        "",               # 35
+        "",               # 36
+        "",               # 37
+        "",               # 38
+        "M",              # 39
+        "",               # 40
+        "N",              # 41
+        "N",              # 42
+        "N",              # 43
+        "",               # 44
+        "N",              # 45
+        "",               # 46
+        "N",              # 47
+        "",               # 48
+        "",               # 49
+        "",               # 50
+        "",               # 51
+        "",               # 52
+        "",               # 53
+        "",               # 54
+        "",               # 55
+        "N",              # 56
+        "",               # 57
+        "",               # 58
+        "N",              # 59
+        "",               # 60
+        "",               # 61
+        "N",              # 62
+        "",               # 63
+        "N",              # 64
+        "N",              # 65
+        "N",              # 66
+        ct,               # 67
+        ct,               # 68
+        "N",              # 69
+        "N",              # 70
     ])
 
 # ─────────────────────────────────────────────
-# REGISTRO 1000 – NF de Entrada (98 campos)
-# V3.1: Campo 70 preenchido para notas de importação
+# REGISTRO 1000 – 98 campos
 # ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
@@ -450,18 +822,14 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
 
-    # ── Campo 3: Inscrição do fornecedor ─────────────────────────────
     if importacao and dest is not None:
         id_ext    = get_text(dest, "nfe:idEstrangeiro").strip()
         cnpj_forn = id_ext if id_ext else ""
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ")
 
-    # ── Campo 17: P=Próprio (importação) / T=Terceiros (nacional) ────
     emitente_nf = "P" if importacao else "T"
-
-    # ── Campo 44: IE do fornecedor ────────────────────────────────────
-    ie_forn = "" if importacao else get_text(emit, "nfe:IE")
+    ie_forn     = "" if importacao else get_text(emit, "nfe:IE")
 
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
@@ -500,16 +868,12 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     if inf_adic is not None:
         obs_fisco = get_text(inf_adic, "nfe:infAdFisco")[:300]
 
-    # ── Número da DI (campo 52) ───────────────────────────────────────
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
 
-    # ── Campo 70: Tipo do documento de importação ─────────────────────
-    # 10 = Declaração de Importação (DI)
-    #  1 = Declaração Simplificada de Importação (DSI)
     tipo_doc_importacao = ""
     if importacao and n_di:
         if n_di.upper().startswith("DSI"):
@@ -518,104 +882,15 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
             tipo_doc_importacao = "10"
 
     return pipe_join([
-        "1000",               # 1  - Fixo
-        especie,              # 2  - Código espécie
-        cnpj_forn,            # 3  - Inscrição fornecedor
-        "",                   # 4  - Código exclusão DIEF
-        acumulador,           # 5  - Código acumulador
-        cfop_first,           # 6  - CFOP
-        "",                   # 7  - Segmento
-        nNF,                  # 8  - Número documento
-        serie,                # 9  - Série
-        "",                   # 10 - Número documento final
-        dhEmi,                # 11 - Data entrada
-        dhEmi,                # 12 - Data emissão
-        v_nf,                 # 13 - Valor contábil
-        "",                   # 14 - Valor exclusão DIEF
-        obs_fisco,            # 15 - Observação fiscal
-        mod_frete,            # 16 - Modalidade frete
-        emitente_nf,          # 17 - Emitente NF (P/T)
-        "",                   # 18 - CFOP estendido SE
-        "",                   # 19 - Cód. transferência crédito RS
-        "",                   # 20 - Cód. recolhimento ISS retido
-        "",                   # 21 - Cód. recolhimento IRRF
-        "",                   # 22 - Código observação
-        "",                   # 23 - Data visto MG
-        "",                   # 24 - Fato gerador CRF
-        "",                   # 25 - Fato gerador IRRF
-        v_frete,              # 26 - Valor frete
-        v_seg,                # 27 - Valor seguro
-        v_outro,              # 28 - Valor despesas acessórias
-        v_pis,                # 29 - Valor PIS
-        "",                   # 30 - Tipo antecipação tributária
-        v_cofins,             # 31 - Valor COFINS
-        "",                   # 32 - Valor DARE SE
-        "",                   # 33 - Alíquota DARE SE
-        "",                   # 34 - Valor BC ICMS ST
-        "",                   # 35 - Entradas isentas MG
-        "",                   # 36 - Outras entradas isentas MG
-        "",                   # 37 - Valor transporte incluído base MG
-        "",                   # 38 - Código ressarcimento
-        v_prod,               # 39 - Valor produtos
-        c_mun_fg,             # 40 - Município origem
-        "0",                  # 41 - Situação da nota (0=Regular)
-        "",                   # 42 - Código situação tributária
-        "",                   # 43 - Sub série
-        ie_forn,              # 44 - IE fornecedor
-        "",                   # 45 - IM fornecedor
-        "",                   # 46 - Código operação e prestação
-        "",                   # 47 - Valor deduzido receita tributável
-        "",                   # 48 - Competência
-        "",                   # 49 - Operação PA
-        "",                   # 50 - Número parecer fiscal
-        "",                   # 51 - Data parecer fiscal
-        n_di,                 # 52 - Número declaração de importação
-        "N",                  # 53 - Possui benefício fiscal
-        chave,                # 54 - Chave NF-e
-        "",                   # 55 - Cód. recolhimento FETHAB
-        "",                   # 56 - Responsável recolhimento FETHAB
-        "",                   # 57 - CFOP documento fiscal
-        "",                   # 58 - Tipo CT-e
-        "",                   # 59 - CT-e referência
-        "1",                  # 60 - Modalidade importação (1=Com direito a crédito)
-        "",                   # 61 - Cód. informação complementar
-        "",                   # 62 - Informação complementar
-        "",                   # 63 - Classe de consumo
-        "",                   # 64 - Tipo de ligação
-        "",                   # 65 - Grupo de tensão
-        "",                   # 66 - Tipo de assinante
-        "",                   # 67 - KWH consumido
-        "",                   # 68 - Valor fornecido energia/gás
-        "",                   # 69 - Valor cobrado de terceiros
-        tipo_doc_importacao,  # 70 - Tipo doc. importação (10=DI / 1=DSI)
-        "",                   # 71 - Número Ato Concessório Drawback
-        "",                   # 72 - Natureza frete PIS/COFINS
-        "",                   # 73 - CST PIS/COFINS
-        "",                   # 74 - Base crédito PIS/COFINS
-        "",                   # 75 - Valor serviços PIS/COFINS
-        "",                   # 76 - Base cálculo PIS/COFINS
-        "",                   # 77 - Alíquota PIS
-        "",                   # 78 - Alíquota COFINS
-        "",                   # 79 - Chave NFSe
-        "",                   # 80 - Número processo/ato concessório
-        "",                   # 81 - Origem processo
-        "",                   # 82 - Data escrituração
-        "",                   # 83 - CFPS DF
-        "",                   # 84 - Natureza receita PIS/COFINS
-        "",                   # 85 - CST IPI
-        "",                   # 86 - Lançamentos SCP
-        "",                   # 87 - Tipo serviço
-        "",                   # 88 - Município destino
-        "",                   # 89 - Pedágio
-        v_ipi,                # 90 - Valor IPI
-        v_st,                 # 91 - Valor ICMS ST
-        "",                   # 92 - Classificação serviços EFD-Reinf tipo
-        "",                   # 93 - Indicativo prestação serviço EFD-Reinf
-        "",                   # 94 - Número documento arrecadação RS
-        "",                   # 95 - Tipo do título
-        "",                   # 96 - Identificação
-        v_icms_d,             # 97 - ICMS desonerado
-        "",                   # 98 - IPI devolução
+        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "",
+        nNF, serie, "", dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete,
+        emitente_nf, "", "", "", "", "", "", "", "", v_frete, v_seg,
+        v_outro, v_pis, "", v_cofins, "", "", "", "", "", "", "", v_prod,
+        c_mun_fg, "0", "", "", ie_forn, "", "", "", "", "", "",
+        n_di, "N", chave, "", "", "", "", "", "1", "", "", "", "", "",
+        "", "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        v_ipi, v_st, "", "", "", "", v_icms_d, "",
     ])
 
 # ─────────────────────────────────────────────
@@ -650,7 +925,7 @@ def gerar_registros_1015(nfe_root) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# REGISTROS 1020 – Impostos (19 campos)
+# REGISTROS 1020 – Impostos
 # ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root) -> list:
     total  = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
@@ -747,7 +1022,7 @@ def gerar_registros_1020(nfe_root) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# REGISTRO 1030 – Estoque/Item (111 campos)
+# REGISTRO 1030 – 111 campos
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int) -> str:
     prod    = det.find("nfe:prod", NS)
@@ -851,121 +1126,24 @@ def gerar_registro_1030(det, seq: int) -> str:
         v_total = fmt_decimal(v_prod)
 
     return pipe_join([
-        "1030",                   # 1  - Fixo
-        cod_prod,                 # 2  - Código produto
-        qtd,                      # 3  - Quantidade
-        v_total,                  # 4  - Valor total (vProd + vIPI)
-        v_ipi,                    # 5  - Valor IPI
-        fmt_decimal(v_prod),      # 6  - Base de cálculo (vProd)
-        "1",                      # 7  - Tipo lançamento
-        d_di,                     # 8  - Data DI
-        n_di,                     # 9  - Número DI (somente dígitos)
-        cst_icms,                 # 10 - CST ICMS
-        fmt_decimal(v_prod),      # 11 - Valor bruto produto
-        fmt_decimal(v_desc),      # 12 - Valor desconto
-        v_bc_icms,                # 13 - BC ICMS
-        v_bc_st,                  # 14 - BC ICMS ST
-        aliq_icms,                # 15 - Alíquota ICMS
-        "",                       # 16 - Produto incentivado PE
-        "",                       # 17 - Cód. apuração PE
-        "",                       # 18 - Valor frete
-        "",                       # 19 - Valor seguro
-        fmt_decimal(v_outro),     # 20 - Despesas acessórias
-        "",                       # 21 - Qtd gasolina
-        v_icms,                   # 22 - Valor ICMS
-        "",                       # 23 - Valor SUBTRI
-        "",                       # 24 - Isentas IPI
-        "",                       # 25 - Outras IPI
-        "",                       # 26 - ICMS NFP
-        fmt_decimal(v_unit, 6),   # 27 - Valor unitário
-        "",                       # 28 - Alíquota ST
-        cst_ipi,                  # 29 - CST IPI
-        aliq_ipi,                 # 30 - Alíquota IPI
-        "",                       # 31 - BC ISSQN
-        "",                       # 32 - Alíquota ISSQN
-        "",                       # 33 - Valor ISSQN
-        cfop,                     # 34 - CFOP
-        "",                       # 35 - Série ECF
-        aliq_pis,                 # 36 - Alíquota PIS
-        v_pis,                    # 37 - Valor PIS
-        aliq_cof,                 # 38 - Alíquota COFINS
-        v_cof,                    # 39 - Valor COFINS
-        fmt_decimal(v_prod),      # 40 - Custo total produto
-        cst_pis,                  # 41 - CST PIS
-        bc_pis,                   # 42 - BC PIS
-        cst_cof,                  # 43 - CST COFINS
-        bc_cof,                   # 44 - BC COFINS
-        "",                       # 45 - Chassi veículo
-        "",                       # 46 - Tipo operação veículo
-        "",                       # 47 - Lote medicamento
-        "",                       # 48 - Qtd lote medicamento
-        "",                       # 49 - Data validade
-        "",                       # 50 - Data fabricação
-        "",                       # 51 - Referência BC
-        "",                       # 52 - Valor tabelado
-        "",                       # 53 - Nº série arma
-        "",                       # 54 - Nº série cano
-        "",                       # 55 - Enquadramento IPI
-        "S",                      # 56 - Movimentação física
-        unidade,                  # 57 - Unidade comercializada
-        "",                       # 58 - Complemento CFOP SP
-        "",                       # 59 - Tanque combustível
-        fmt_decimal(v_prod),      # 60 - Valor contábil produto
-        "",                       # 61 - Qtd trib. PIS/unid.
-        "",                       # 62 - Valor unit. PIS/unid.
-        "",                       # 63 - Valor PIS/unid.
-        "",                       # 64 - Qtd trib. COFINS/unid.
-        "",                       # 65 - Valor unit. COFINS/unid.
-        "",                       # 66 - Valor COFINS/unid.
-        "",                       # 67 - Base do crédito
-        "",                       # 68 - Nº nota devolvida
-        "",                       # 69 - Descrição complementar
-        "",                       # 70 - CST PIS nota devolvida
-        "",                       # 71 - CST COFINS nota devolvida
-        "",                       # 72 - Vínculo crédito PIS
-        "",                       # 73 - Vínculo crédito COFINS
-        "",                       # 74 - Exclusão PIS
-        "",                       # 75 - Exclusão COFINS
-        "",                       # 76 - BC ICMS carga média
-        "",                       # 77 - Alíq. ICMS carga média
-        "",                       # 78 - Valor ICMS carga média
-        "",                       # 79 - Nº série ECF devolvido
-        "",                       # 80 - % redução BC PIS/COFINS
-        "",                       # 81 - Cód. recolhimento PIS dev.
-        "",                       # 82 - Cód. recolhimento COFINS dev.
-        "",                       # 83 - Cód. recolhimento PIS
-        "",                       # 84 - Cód. recolhimento COFINS
-        "",                       # 85 - Crédito presumido PIS
-        "",                       # 86 - Crédito presumido COFINS
-        "",                       # 87 - ICMS ST Antec. BC
-        "",                       # 88 - ICMS ST Antec. Alíq.
-        "",                       # 89 - ICMS ST Antec. Valor
-        "",                       # 90 - Cód. recolhimento IPI
-        cest,                     # 91 - Código CEST
-        "",                       # 92 - ICMS ST Retido BC
-        "",                       # 93 - ICMS ST Retido Valor
-        "",                       # 94 - ICMS ST Retido tag XML
-        "",                       # 95 - Identificador
-        "",                       # 96 - ICMS próprio substituto
-        v_icms_des,               # 97 - Valor desonerado
-        "",                       # 98 - Código desoneração
-        "",                       # 99 - ICMS não creditado
-        "",                       # 100 - ICMS monofásico qtd.
-        "",                       # 101 - ICMS monofásico alíq.
-        "",                       # 102 - ICMS monofásico valor
-        "",                       # 103 - ICMS monofásico FCV
-        ibs_class_trib,           # 104 - IBS cClassTrib
-        ibs_bc,                   # 105 - IBS BC
-        ibs_aliq,                 # 106 - IBS Alíquota
-        ibs_val,                  # 107 - IBS Valor
-        ibs_class_trib,           # 108 - CBS cClassTrib
-        cbs_bc,                   # 109 - CBS BC
-        cbs_aliq,                 # 110 - CBS Alíquota
-        cbs_val,                  # 111 - CBS Valor
+        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod),
+        "1", d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
+        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "", fmt_decimal(v_outro),
+        "", v_icms, "", "", "", "", fmt_decimal(v_unit, 6), "", cst_ipi,
+        aliq_ipi, "", "", "", cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
+        fmt_decimal(v_prod), cst_pis, bc_pis, cst_cof, bc_cof,
+        "", "", "", "", "", "", "", "", "", "", "", "S", unidade, "",
+        "", fmt_decimal(v_prod), "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        cest, "", "", "", "", v_icms_des, "", "", "", "", "", "",
+        ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
+        ibs_class_trib, cbs_bc, cbs_aliq, cbs_val,
     ])
 
 # ─────────────────────────────────────────────
-# REGISTRO 1097 – Frete SP (35 campos)
+# REGISTRO 1097 – 35 campos
 # ─────────────────────────────────────────────
 def gerar_registro_1097(nfe_root) -> str:
     transp = nfe_root.find("nfe:infNFe/nfe:transp", NS)
@@ -1002,41 +1180,11 @@ def gerar_registro_1097(nfe_root) -> str:
     peso_b  = fmt_decimal(get_text(vol, "nfe:pesoB"), 3) if vol is not None else ""
 
     return pipe_join([
-        "1097",              # 1  - Fixo
-        mod_frete,           # 2  - Modalidade frete
-        tp_via,              # 3  - Modalidade transporte
-        frete_conta,         # 4  - Frete por conta
-        "",                  # 5  - Placa 1
-        "",                  # 6  - UF Placa 1
-        "",                  # 7  - Placa 2
-        "",                  # 8  - UF Placa 2
-        "",                  # 9  - Placa 3
-        "",                  # 10 - UF Placa 3
-        razao_transp[:150],  # 11 - Razão Social transportador
-        tipo_insc,           # 12 - Tipo inscrição
-        cnpj_transp,         # 13 - CNPJ transportador
-        ie_transp,           # 14 - IE transportador
-        end_transp,          # 15 - Endereço
-        "",                  # 16 - Número
-        "",                  # 17 - Bairro
-        "",                  # 18 - Complemento
-        cidade_cod,          # 19 - Cidade (código IBGE)
-        uf_transp,           # 20 - UF
-        "",                  # 21 - CEP
-        q_vol,               # 22 - Qtd volumes
-        esp_vol,             # 23 - Espécie
-        marca,               # 24 - Marca
-        "",                  # 25 - Numeração
-        peso_l,              # 26 - Peso líquido
-        peso_b,              # 27 - Peso bruto
-        "E",                 # 28 - Tipo local saída
-        "",                  # 29 - CNPJ local saída
-        "",                  # 30 - UF local saída
-        "",                  # 31 - IE local saída
-        "D",                 # 32 - Tipo local recebimento
-        "",                  # 33 - CNPJ local recebimento
-        "",                  # 34 - UF local recebimento
-        "",                  # 35 - IE local recebimento
+        "1097", mod_frete, tp_via, frete_conta, "", "", "", "", "", "",
+        razao_transp[:150], tipo_insc, cnpj_transp, ie_transp, end_transp,
+        "", "", "", cidade_cod, uf_transp, "",
+        q_vol, esp_vol, marca, "", peso_l, peso_b,
+        "E", "", "", "", "D", "", "", "",
     ])
 
 # ─────────────────────────────────────────────
@@ -1092,41 +1240,46 @@ def converter_xml(
     if importacao and dest_node is not None:
         nome_forn = get_text(dest_node, "nfe:xNome")
         uf_forn   = "EX"
+        # Resolve código do país para o resumo
+        ender_dest = dest_node.find("nfe:enderDest", NS)
+        c_pais_xml = get_text(ender_dest, "nfe:cPais") if ender_dest is not None else ""
+        x_pais_xml = get_text(ender_dest, "nfe:xPais") if ender_dest is not None else ""
+        cod_pais_dominio = resolver_codigo_pais_dominio(c_pais_xml, x_pais_xml)
     else:
-        nome_forn = get_text(emit, "nfe:xNome") if emit is not None else ""
-        uf_forn   = ""
+        nome_forn        = get_text(emit, "nfe:xNome") if emit is not None else ""
+        uf_forn          = ""
+        cod_pais_dominio = ""
         if emit is not None:
             ender_e = emit.find("nfe:enderEmit", NS)
             uf_forn = get_text(ender_e, "nfe:UF") if ender_e is not None else ""
 
-    resumo["nNF"]          = get_text(ide, "nfe:nNF")
-    resumo["Emitente"]     = get_text(emit, "nfe:xNome") if emit is not None else ""
-    resumo["CNPJ Emit"]    = get_text(emit, "nfe:CNPJ")  if emit is not None else ""
-    resumo["Fornecedor"]   = nome_forn
-    resumo["UF Forn"]      = uf_forn
-    resumo["CNPJ Empresa"] = cnpj_empresa
-    resumo["Origem CNPJ"]  = origem_cnpj
-    resumo["Importacao"]   = "Sim" if importacao else "Nao"
-    resumo["Emitente NF"]  = "P (Proprio)" if importacao else "T (Terceiros)"
-    resumo["Emissao"]      = fmt_date(get_text(ide, "nfe:dhEmi"))
-    resumo["Itens"]        = len(det_list)
-    resumo["vNF"]          = fmt_decimal(get_text(total, "nfe:vNF"))
-    resumo["vICMS"]        = fmt_decimal(get_text(total, "nfe:vICMS"))
-    resumo["vICMSDes"]     = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
-    resumo["vIPI"]         = fmt_decimal(get_text(total, "nfe:vIPI"))
-    resumo["vPIS"]         = fmt_decimal(get_text(total, "nfe:vPIS"))
-    resumo["vCOFINS"]      = fmt_decimal(get_text(total, "nfe:vCOFINS"))
-    resumo["Grupo"]        = (
+    resumo["nNF"]            = get_text(ide, "nfe:nNF")
+    resumo["Emitente"]       = get_text(emit, "nfe:xNome") if emit is not None else ""
+    resumo["CNPJ Emit"]      = get_text(emit, "nfe:CNPJ")  if emit is not None else ""
+    resumo["Fornecedor"]     = nome_forn
+    resumo["UF Forn"]        = uf_forn
+    resumo["CNPJ Empresa"]   = cnpj_empresa
+    resumo["Origem CNPJ"]    = origem_cnpj
+    resumo["Importacao"]     = "Sim" if importacao else "Nao"
+    resumo["Emitente NF"]    = "P (Proprio)" if importacao else "T (Terceiros)"
+    resumo["Emissao"]        = fmt_date(get_text(ide, "nfe:dhEmi"))
+    resumo["Itens"]          = len(det_list)
+    resumo["vNF"]            = fmt_decimal(get_text(total, "nfe:vNF"))
+    resumo["vICMS"]          = fmt_decimal(get_text(total, "nfe:vICMS"))
+    resumo["vICMSDes"]       = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
+    resumo["vIPI"]           = fmt_decimal(get_text(total, "nfe:vIPI"))
+    resumo["vPIS"]           = fmt_decimal(get_text(total, "nfe:vPIS"))
+    resumo["vCOFINS"]        = fmt_decimal(get_text(total, "nfe:vCOFINS"))
+    resumo["Cod Pais (Dom)"] = cod_pais_dominio  # ← novo campo no resumo
+    resumo["Grupo"]          = (
         f"{grupo_padrao} - {TABELA_GRUPOS.get(grupo_padrao,'GERAL')}"
         if grupo_padrao > 0 else "Auto (CFOP/NCM)"
     )
 
     if incluir_0000:
         lines.append(gerar_registro_0000(cnpj_empresa))
-
     if incluir_0020 and emit is not None:
         lines.append(gerar_registro_0020(emit, dest=dest_node, is_importacao=importacao))
-
     if incluir_0100:
         produtos_gerados = set()
         for det in det_list:
@@ -1215,7 +1368,7 @@ with st.sidebar:
     cnpj_fallback = st.text_input(
         "CNPJ da Empresa (obrigatorio para importacao)",
         value="", max_chars=14,
-        help="Para notas de importacao (CFOP 3xxx / dest. exterior), informe o CNPJ da empresa importadora."
+        help="Para notas de importacao, informe o CNPJ da empresa importadora."
     )
     acumulador = st.text_input("Codigo do Acumulador", value="1157")
     especie    = st.text_input("Codigo da Especie", value="36")
@@ -1256,25 +1409,23 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V3.2-FINAL — Código de País convertido para tabela interna Domínio</h4>
+        <ul>
+          <li><b>0020 campo 11</b>: Agora usa o código interno da planilha <b>Países.xls</b> do Domínio</li>
+          <li>Conversão automática: <b>cPais BACEN (XML)</b> → <b>código interno Domínio</b></li>
+          <li>Exemplo: cPais <code>2496</code> (BACEN EUA) → <code>76</code> (Domínio)</li>
+          <li>Fallback por nome do país caso o código BACEN não seja encontrado</li>
+          <li>Resumo exibe coluna <b>Cod Pais (Dom)</b> com o código resolvido</li>
+        </ul>
         <h4>V3.1-FINAL — Campo 70 do Registro 1000 corrigido</h4>
         <ul>
-          <li><b>1000 campo 70</b>: Preenchido automaticamente em notas de importacao</li>
-          <li><b>10</b> = Declaracao de Importacao (DI) — numero nao inicia com DSI</li>
-          <li><b>1</b> = Declaracao Simplificada de Importacao (DSI) — numero inicia com DSI</li>
-          <li><b>Vazio</b> = Nota nacional (nao importacao)</li>
+          <li><b>1000 campo 70</b>: <b>10</b>=DI / <b>1</b>=DSI / vazio=nacional</li>
         </ul>
         <h4>V3.0-FINAL — Baseado nos layouts oficiais do Dominio</h4>
         <ul>
-          <li><b>0000 campo 2</b>: CNPJ da empresa (fallback para importacao)</li>
-          <li><b>0020</b>: Importacao → fornecedor EXTERIOR (<code>&lt;dest&gt;</code>), CNPJ vazio, cPais BACEN</li>
-          <li><b>1000 campo 3</b>: CNPJ do <code>&lt;emit&gt;</code> — valida chave NF-e</li>
-          <li><b>1000 campo 17</b>: <b>P=Proprio</b> (importacao) / <b>T=Terceiros</b> (nacional)</li>
-          <li><b>1000</b>: 98 campos conforme layout oficial</li>
-          <li><b>1030</b>: 111 campos conforme layout oficial</li>
-          <li><b>1097</b>: 35 campos conforme layout oficial</li>
-          <li><b>0110 campos 8/9</b>: Aliquota PIS/COFINS lida do XML</li>
-          <li><b>1030 campo 9</b>: Numero DI = somente digitos</li>
-          <li><b>1097 campo 19</b>: Cidade = codigo IBGE numerico</li>
+          <li>0020 importação → fornecedor EXTERIOR, CNPJ vazio, cPais BACEN</li>
+          <li>1000 campo 17: P=Proprio / T=Terceiros</li>
+          <li>1000: 98 campos | 1030: 111 campos | 1097: 35 campos</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1335,13 +1486,14 @@ if uploaded_files:
             for idx, r in enumerate(cnpjs_unicos[:4]):
                 is_imp = r.get("Importacao", "Nao") == "Sim"
                 cor    = "#1565C0" if is_imp else "#FF8000"
+                pais_info = f" | País Domínio: {r.get('Cod Pais (Dom)', '')}" if is_imp else ""
                 with cols[idx]:
                     st.markdown(
                         f'<div class="cnpj-badge" style="color:{cor};border-color:{cor};">'
                         f'Empresa: {r["CNPJ Empresa"]}</div>'
                         f'<div class="info-origem" style="border-left-color:{cor};">'
                         f'{r.get("Origem CNPJ","")}<br>'
-                        f'{"Importacao | Forn: " + r.get("Fornecedor","")[:45] if is_imp else "Forn: " + r.get("Fornecedor","")[:50]}'
+                        f'{"Importacao | Forn: " + r.get("Fornecedor","")[:40] + pais_info if is_imp else "Forn: " + r.get("Fornecedor","")[:50]}'
                         f'<br><small>Emitente NF: {r.get("Emitente NF","")}</small>'
                         f'</div>',
                         unsafe_allow_html=True,
