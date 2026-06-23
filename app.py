@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V3.3-FINAL"
+VERSAO = "V3.4-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -254,6 +254,22 @@ def encode_ansi(conteudo: str) -> bytes:
 def somente_numeros(valor: str) -> str:
     return re.sub(r"[^0-9]", "", valor or "")
 
+def extrair_chave_nfe(nfe_root) -> str:
+    """
+    Extrai a chave de 44 dígitos da NF-e.
+    V3.4: usa re.sub para garantir remoção do prefixo 'NFe'
+    e valida que o resultado tem exatamente 44 dígitos.
+    """
+    inf_nfe = nfe_root.find("nfe:infNFe", NS)
+    if inf_nfe is None:
+        return ""
+    id_attr = inf_nfe.get("Id", "")
+    # Remove prefixo 'NFe' se existir
+    chave = re.sub(r"^NFe", "", id_attr)
+    # Garante somente dígitos e comprimento 44
+    chave_num = re.sub(r"[^0-9]", "", chave)
+    return chave_num if len(chave_num) == 44 else chave
+
 # ─────────────────────────────────────────────
 # DETECÇÃO DE GRUPO
 # ─────────────────────────────────────────────
@@ -476,7 +492,11 @@ def gerar_registro_0110(det) -> str:
     ])
 
 # ─────────────────────────────────────────────
-# REGISTRO 1000 – V3.3: Campo 70 fixo = "1"
+# REGISTRO 1000 – V3.4
+# Correções:
+#   - Campo 53 (Possui benefício fiscal): sempre "N" explícito
+#   - Campo 54 (Chave NF-e): usa extrair_chave_nfe() — 44 dígitos limpos
+#   - Campo 70 (Tipo doc. importação): fixo "1" para importação
 # ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
@@ -517,11 +537,8 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     v_outro  = fmt_decimal(get_text(total, "nfe:vOutro"))
     v_icms_d = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
 
-    inf_nfe = nfe_root.find("nfe:infNFe", NS)
-    chave   = ""
-    if inf_nfe is not None:
-        id_attr = inf_nfe.get("Id", "")
-        chave   = id_attr.replace("NFe", "") if id_attr else ""
+    # ── V3.4: Chave NF-e limpa (44 dígitos, sem prefixo NFe) ─────────
+    chave = extrair_chave_nfe(nfe_root)
 
     transp        = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     mod_frete_cod = get_text(transp, "nfe:modFrete")
@@ -543,15 +560,104 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     tipo_doc_importacao = "1" if importacao else ""
 
     return pipe_join([
-        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "",
-        nNF, serie, "", dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete,
-        emitente_nf, "", "", "", "", "", "", "", "", v_frete, v_seg,
-        v_outro, v_pis, "", v_cofins, "", "", "", "", "", "", "", v_prod,
-        c_mun_fg, "0", "", "", ie_forn, "", "", "", "", "", "",
-        n_di, "N", chave, "", "", "", "", "", "1", "", "", "", "", "",
-        "", "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-        v_ipi, v_st, "", "", "", "", v_icms_d, "",
+        "1000",               # 1
+        especie,              # 2
+        cnpj_forn,            # 3
+        "",                   # 4
+        acumulador,           # 5
+        cfop_first,           # 6
+        "",                   # 7
+        nNF,                  # 8
+        serie,                # 9
+        "",                   # 10
+        dhEmi,                # 11
+        dhEmi,                # 12
+        v_nf,                 # 13
+        "",                   # 14
+        obs_fisco,            # 15
+        mod_frete,            # 16
+        emitente_nf,          # 17
+        "",                   # 18
+        "",                   # 19
+        "",                   # 20
+        "",                   # 21
+        "",                   # 22
+        "",                   # 23
+        "",                   # 24
+        "",                   # 25
+        v_frete,              # 26
+        v_seg,                # 27
+        v_outro,              # 28
+        v_pis,                # 29
+        "",                   # 30
+        v_cofins,             # 31
+        "",                   # 32
+        "",                   # 33
+        "",                   # 34
+        "",                   # 35
+        "",                   # 36
+        "",                   # 37
+        "",                   # 38
+        v_prod,               # 39
+        c_mun_fg,             # 40
+        "0",                  # 41
+        "",                   # 42
+        "",                   # 43
+        ie_forn,              # 44
+        "",                   # 45
+        "",                   # 46
+        "",                   # 47
+        "",                   # 48
+        "",                   # 49
+        "",                   # 50
+        "",                   # 51
+        n_di,                 # 52
+        "N",                  # 53 ← V3.4: "Possui benefício fiscal" = N (explícito)
+        chave,                # 54 ← V3.4: Chave 44 dígitos limpa
+        "",                   # 55
+        "",                   # 56
+        "",                   # 57
+        "",                   # 58
+        "",                   # 59
+        "1",                  # 60
+        "",                   # 61
+        "",                   # 62
+        "",                   # 63
+        "",                   # 64
+        "",                   # 65
+        "",                   # 66
+        "",                   # 67
+        "",                   # 68
+        "",                   # 69
+        tipo_doc_importacao,  # 70 ← V3.3: fixo "1" para importação
+        "",                   # 71
+        "",                   # 72
+        "",                   # 73
+        "",                   # 74
+        "",                   # 75
+        "",                   # 76
+        "",                   # 77
+        "",                   # 78
+        "",                   # 79
+        "",                   # 80
+        "",                   # 81
+        "",                   # 82
+        "",                   # 83
+        "",                   # 84
+        "",                   # 85
+        "",                   # 86
+        "",                   # 87
+        "",                   # 88
+        "",                   # 89
+        v_ipi,                # 90
+        v_st,                 # 91
+        "",                   # 92
+        "",                   # 93
+        "",                   # 94
+        "",                   # 95
+        "",                   # 96
+        v_icms_d,             # 97
+        "",                   # 98
     ])
 
 # ─────────────────────────────────────────────
@@ -684,7 +790,6 @@ def gerar_registros_1020(nfe_root) -> list:
 
 # ─────────────────────────────────────────────
 # REGISTRO 1030 – 111 campos
-# V3.3: IBS/CBS campos 104-111 sempre gerados quando existirem no XML
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int) -> str:
     prod    = det.find("nfe:prod", NS)
@@ -709,16 +814,8 @@ def gerar_registro_1030(det, seq: int) -> str:
     v_ipi = aliq_ipi = cst_ipi = ""
     v_pis = aliq_pis = cst_pis = bc_pis = ""
     v_cof = aliq_cof = cst_cof = bc_cof = ""
-
-    # ── IBS/CBS: inicializa sempre vazio, preenche se existir no XML ──
-    ibs_class_trib = ""
-    ibs_bc         = ""
-    ibs_aliq       = ""
-    ibs_val        = ""
-    cbs_class_trib = ""
-    cbs_bc         = ""
-    cbs_aliq       = ""
-    cbs_val        = ""
+    ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
+    cbs_class_trib = cbs_bc = cbs_aliq = cbs_val = ""
 
     if imposto is not None:
         for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40",
@@ -768,15 +865,14 @@ def gerar_registro_1030(det, seq: int) -> str:
                     bc_cof   = fmt_decimal(get_text(cn, "nfe:vBC"))
                     break
 
-        # ── IBS/CBS: leitura dos campos do XML ────────────────────────
         ibs_node = imposto.find("nfe:IBSCBS", NS)
         if ibs_node is not None:
             ibs_class_trib = get_text(ibs_node, "nfe:cClassTrib")
-            cbs_class_trib = ibs_class_trib  # mesmo cClassTrib para IBS e CBS
+            cbs_class_trib = ibs_class_trib
             gibs = ibs_node.find("nfe:gIBSCBS", NS)
             if gibs is not None:
                 ibs_bc = fmt_decimal(get_text(gibs, "nfe:vBC"))
-                cbs_bc = ibs_bc  # mesma BC para IBS e CBS
+                cbs_bc = ibs_bc
                 guf = gibs.find("nfe:gIBSUF", NS)
                 if guf is not None:
                     ibs_aliq = fmt_decimal(get_text(guf, "nfe:pIBSUF"))
@@ -796,117 +892,22 @@ def gerar_registro_1030(det, seq: int) -> str:
         v_total = fmt_decimal(v_prod)
 
     return pipe_join([
-        "1030",                   # 1
-        cod_prod,                 # 2
-        qtd,                      # 3
-        v_total,                  # 4
-        v_ipi,                    # 5
-        fmt_decimal(v_prod),      # 6
-        "1",                      # 7
-        d_di,                     # 8
-        n_di,                     # 9
-        cst_icms,                 # 10
-        fmt_decimal(v_prod),      # 11
-        fmt_decimal(v_desc),      # 12
-        v_bc_icms,                # 13
-        v_bc_st,                  # 14
-        aliq_icms,                # 15
-        "",                       # 16
-        "",                       # 17
-        "",                       # 18
-        "",                       # 19
-        fmt_decimal(v_outro),     # 20
-        "",                       # 21
-        v_icms,                   # 22
-        "",                       # 23
-        "",                       # 24
-        "",                       # 25
-        "",                       # 26
-        fmt_decimal(v_unit, 6),   # 27
-        "",                       # 28
-        cst_ipi,                  # 29
-        aliq_ipi,                 # 30
-        "",                       # 31
-        "",                       # 32
-        "",                       # 33
-        cfop,                     # 34
-        "",                       # 35
-        aliq_pis,                 # 36
-        v_pis,                    # 37
-        aliq_cof,                 # 38
-        v_cof,                    # 39
-        fmt_decimal(v_prod),      # 40
-        cst_pis,                  # 41
-        bc_pis,                   # 42
-        cst_cof,                  # 43
-        bc_cof,                   # 44
-        "",                       # 45
-        "",                       # 46
-        "",                       # 47
-        "",                       # 48
-        "",                       # 49
-        "",                       # 50
-        "",                       # 51
-        "",                       # 52
-        "",                       # 53
-        "",                       # 54
-        "",                       # 55
-        "S",                      # 56
-        unidade,                  # 57
-        "",                       # 58
-        "",                       # 59
-        fmt_decimal(v_prod),      # 60
-        "",                       # 61
-        "",                       # 62
-        "",                       # 63
-        "",                       # 64
-        "",                       # 65
-        "",                       # 66
-        "",                       # 67
-        "",                       # 68
-        "",                       # 69
-        "",                       # 70
-        "",                       # 71
-        "",                       # 72
-        "",                       # 73
-        "",                       # 74
-        "",                       # 75
-        "",                       # 76
-        "",                       # 77
-        "",                       # 78
-        "",                       # 79
-        "",                       # 80
-        "",                       # 81
-        "",                       # 82
-        "",                       # 83
-        "",                       # 84
-        "",                       # 85
-        "",                       # 86
-        "",                       # 87
-        "",                       # 88
-        "",                       # 89
-        "",                       # 90
-        cest,                     # 91
-        "",                       # 92
-        "",                       # 93
-        "",                       # 94
-        "",                       # 95
-        "",                       # 96
-        v_icms_des,               # 97
-        "",                       # 98
-        "",                       # 99
-        "",                       # 100
-        "",                       # 101
-        "",                       # 102
-        "",                       # 103
-        ibs_class_trib,           # 104 – IBS cClassTrib
-        ibs_bc,                   # 105 – IBS Base de cálculo
-        ibs_aliq,                 # 106 – IBS Alíquota
-        ibs_val,                  # 107 – IBS Valor
-        cbs_class_trib,           # 108 – CBS cClassTrib
-        cbs_bc,                   # 109 – CBS Base de cálculo
-        cbs_aliq,                 # 110 – CBS Alíquota
-        cbs_val,                  # 111 – CBS Valor
+        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod),
+        "1", d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
+        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "",
+        fmt_decimal(v_outro), "", v_icms, "", "", "", "",
+        fmt_decimal(v_unit, 6), "", cst_ipi, aliq_ipi, "", "", "",
+        cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
+        fmt_decimal(v_prod), cst_pis, bc_pis, cst_cof, bc_cof,
+        "", "", "", "", "", "", "", "", "", "", "",
+        "S", unidade, "", "", fmt_decimal(v_prod),
+        "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        cest, "", "", "", "", v_icms_des, "", "", "", "", "", "",
+        ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
+        cbs_class_trib, cbs_bc, cbs_aliq, cbs_val,
     ])
 
 # ─────────────────────────────────────────────
@@ -916,19 +917,16 @@ def gerar_registro_1097(nfe_root) -> str:
     transp = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     if transp is None:
         return ""
-
     mod_frete_cod = get_text(transp, "nfe:modFrete")
     frete_map     = {"0":"C","1":"F","2":"S","3":"T","4":"R","5":"D","9":"S"}
     mod_frete     = frete_map.get(mod_frete_cod, "C")
     frete_conta   = "E" if mod_frete == "C" else "D"
-
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     tp_via   = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
         if di_node is not None:
             tp_via = get_text(di_node, "nfe:tpViaTransp")
-
     transporta   = transp.find("nfe:transporta", NS)
     cnpj_transp  = get_text(transporta, "nfe:CNPJ")   if transporta is not None else ""
     razao_transp = get_text(transporta, "nfe:xNome")  if transporta is not None else ""
@@ -938,14 +936,12 @@ def gerar_registro_1097(nfe_root) -> str:
     cmun_transp  = get_text(transporta, "nfe:cMun")   if transporta is not None else ""
     cidade_cod   = somente_numeros(cmun_transp) if cmun_transp else ""
     tipo_insc    = "1" if cnpj_transp else ""
-
     vol     = transp.find("nfe:vol", NS)
     q_vol   = get_text(vol, "nfe:qVol")  if vol is not None else ""
     esp_vol = get_text(vol, "nfe:esp")   if vol is not None else ""
     marca   = get_text(vol, "nfe:marca") if vol is not None else ""
     peso_l  = fmt_decimal(get_text(vol, "nfe:pesoL"), 3) if vol is not None else ""
     peso_b  = fmt_decimal(get_text(vol, "nfe:pesoB"), 3) if vol is not None else ""
-
     return pipe_join([
         "1097", mod_frete, tp_via, frete_conta, "", "", "", "", "", "",
         razao_transp[:150], tipo_insc, cnpj_transp, ie_transp, end_transp,
@@ -1019,6 +1015,8 @@ def converter_xml(
             ender_e = emit.find("nfe:enderEmit", NS)
             uf_forn = get_text(ender_e, "nfe:UF") if ender_e is not None else ""
 
+    chave_resumo = extrair_chave_nfe(nfe)
+
     resumo["nNF"]            = get_text(ide, "nfe:nNF")
     resumo["Emitente"]       = get_text(emit, "nfe:xNome") if emit is not None else ""
     resumo["CNPJ Emit"]      = get_text(emit, "nfe:CNPJ")  if emit is not None else ""
@@ -1036,6 +1034,7 @@ def converter_xml(
     resumo["vIPI"]           = fmt_decimal(get_text(total, "nfe:vIPI"))
     resumo["vPIS"]           = fmt_decimal(get_text(total, "nfe:vPIS"))
     resumo["vCOFINS"]        = fmt_decimal(get_text(total, "nfe:vCOFINS"))
+    resumo["Chave NF-e"]     = chave_resumo
     resumo["Cod Pais (Dom)"] = cod_pais_dominio
     resumo["Grupo"]          = (
         f"{grupo_padrao} - {TABELA_GRUPOS.get(grupo_padrao,'GERAL')}"
@@ -1175,27 +1174,24 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V3.4-FINAL — Correcao dos erros de importacao no Dominio</h4>
+        <ul>
+          <li><b>1000 campo 53</b> (Possui beneficio fiscal): corrigido para <b>N</b> explícito — eliminado o erro "Voce deve informar S ou N"</li>
+          <li><b>1000 campo 54</b> (Chave NF-e): nova funcao <code>extrair_chave_nfe()</code> garante exatamente 44 digitos numericos, sem prefixo "NFe" — eliminado o erro "Chave da NF-e em branco"</li>
+          <li>Resumo exibe coluna <b>Chave NF-e</b> para conferência visual</li>
+        </ul>
         <h4>V3.3-FINAL — Campo 70 do 1000 fixo = 1 | IBS/CBS 1030 revisado</h4>
         <ul>
-          <li><b>1000 campo 70</b>: Fixo <b>1</b> para todas as notas de importação (conforme solicitação)</li>
-          <li><b>1030 campos 104-111</b>: IBS/CBS sempre preenchidos quando presentes no XML
-            <ul>
-              <li>104 = IBS cClassTrib | 105 = IBS BC | 106 = IBS Alíq. | 107 = IBS Valor</li>
-              <li>108 = CBS cClassTrib | 109 = CBS BC | 110 = CBS Alíq. | 111 = CBS Valor</li>
-            </ul>
-          </li>
+          <li><b>1000 campo 70</b>: Fixo <b>1</b> para importacao</li>
+          <li><b>1030 campos 104-111</b>: IBS/CBS com variaveis separadas (ibs_class_trib / cbs_class_trib)</li>
         </ul>
-        <h4>V3.2-FINAL — Código de País convertido para tabela interna Domínio</h4>
+        <h4>V3.2-FINAL — Codigo de Pais convertido para tabela interna Dominio</h4>
         <ul>
-          <li><b>0020 campo 11</b>: Código interno da planilha Países.xls (ex: 2496 BACEN → 76 Domínio)</li>
+          <li><b>0020 campo 11</b>: Codigo interno da planilha Paises.xls (ex: 2496 BACEN → 76 Dominio)</li>
         </ul>
-        <h4>V3.1-FINAL — Campo 70 do Registro 1000</h4>
+        <h4>V3.0/3.1-FINAL</h4>
         <ul>
-          <li>Preenchimento automático: 10=DI / 1=DSI / vazio=nacional</li>
-        </ul>
-        <h4>V3.0-FINAL</h4>
-        <ul>
-          <li>Layout oficial Domínio: 0020 (33 campos), 1000 (98), 1030 (111), 1097 (35)</li>
+          <li>Layout oficial Dominio: 0020 (33 campos), 1000 (98), 1030 (111), 1097 (35)</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1256,7 +1252,7 @@ if uploaded_files:
             for idx, r in enumerate(cnpjs_unicos[:4]):
                 is_imp = r.get("Importacao", "Nao") == "Sim"
                 cor    = "#1565C0" if is_imp else "#FF8000"
-                pais_info = f" | País Dom.: {r.get('Cod Pais (Dom)', '')}" if is_imp else ""
+                pais_info = f" | Pais Dom.: {r.get('Cod Pais (Dom)', '')}" if is_imp else ""
                 with cols[idx]:
                     st.markdown(
                         f'<div class="cnpj-badge" style="color:{cor};border-color:{cor};">'
@@ -1265,6 +1261,7 @@ if uploaded_files:
                         f'{r.get("Origem CNPJ","")}<br>'
                         f'{"Importacao | Forn: " + r.get("Fornecedor","")[:40] + pais_info if is_imp else "Forn: " + r.get("Fornecedor","")[:50]}'
                         f'<br><small>Emitente NF: {r.get("Emitente NF","")}</small>'
+                        f'<br><small>Chave: {r.get("Chave NF-e","")[:22]}...</small>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
