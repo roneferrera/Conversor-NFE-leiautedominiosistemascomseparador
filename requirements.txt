@@ -1,3 +1,21 @@
-# Python >= 3.10
+# ─────────────────────────────────────────────────────────────
+# Conversor XML NF-e → Dominio Sistemas
+# Requirements completos — V4.5-FINAL
+# ─────────────────────────────────────────────────────────────
 
+# Interface web
 streamlit>=1.35.0
+
+# Geração de relatório Excel (.xlsx)
+openpyxl>=3.1.2
+
+# ─────────────────────────────────────────────────────────────
+# Bibliotecas da biblioteca padrão do Python (built-in)
+# NÃO precisam ser instaladas — apenas documentadas aqui:
+#
+#   xml.etree.ElementTree  → parse dos XMLs de NF-e
+#   datetime               → formatação de datas
+#   re                     → expressões regulares (CNPJ, chave)
+#   zipfile                → extração de XMLs de pastas ZIP
+#   io                     → BytesIO para download em memória
+# ─────────────────────────────────────────────────────────────
