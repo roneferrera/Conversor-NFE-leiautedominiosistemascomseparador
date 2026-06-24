@@ -12,7 +12,8 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V4.5-FINAL"
+VERSAO = "V4.6-FINAL"
+DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
     st.markdown("""
@@ -279,16 +280,8 @@ def safe_float(v: str) -> float:
 
 # ─────────────────────────────────────────────
 # DETECÇÃO DE ALÍQUOTA REDUZIDA PIS/COFINS
-# ── Calcula a alíquota majoritária da nota e
-#    retorna um set com as alíquotas "padrão".
-#    Itens com alíquota MENOR que a padrão
-#    recebem CST 73 (redução linear).
 # ─────────────────────────────────────────────
 def calcular_aliquotas_padrao_nota(nfe_root) -> tuple:
-    """
-    Retorna (aliq_pis_padrao: float, aliq_cof_padrao: float)
-    — a alíquota que aparece na maioria dos itens da nota.
-    """
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     pis_vals = []
     cof_vals = []
@@ -314,7 +307,6 @@ def calcular_aliquotas_padrao_nota(nfe_root) -> tuple:
                     if v > 0:
                         cof_vals.append(v)
                     break
-    # Alíquota majoritária = a que mais aparece; em caso de empate, a maior
     def majoritaria(vals):
         if not vals:
             return 0.0
@@ -322,17 +314,12 @@ def calcular_aliquotas_padrao_nota(nfe_root) -> tuple:
     return majoritaria(pis_vals), majoritaria(cof_vals)
 
 def is_aliq_reduzida_pis(aliq: float, padrao: float) -> bool:
-    """True se a alíquota do item for menor que a padrão da nota."""
     return padrao > 0 and aliq > 0 and aliq < padrao
 
 def is_aliq_reduzida_cof(aliq: float, padrao: float) -> bool:
     return padrao > 0 and aliq > 0 and aliq < padrao
 
 def cst_pis_efetivo(cst_xml: str, aliq_item: float, aliq_padrao: float) -> str:
-    """
-    Retorna CST 73 se a alíquota for reduzida, senão mantém o CST do XML.
-    CST 73 = Operação de Aquisição a Alíquota Diferenciada (redução linear).
-    """
     if is_aliq_reduzida_pis(aliq_item, aliq_padrao):
         return "73"
     return cst_xml
@@ -727,7 +714,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     ws.row_dimensions[1].height = 20
     ws.row_dimensions[2].height = 28
     ws.freeze_panes = "A3"
-    # Aba Resumo 1020
     ws2 = wb.create_sheet("Resumo 1020")
     ws2["A1"] = "Resumo das linhas 1020 (agrupado por alíquota)"
     ws2["A1"].font = Font(bold=True, color=laranja, size=11)
@@ -791,7 +777,8 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
 
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
-        razao       = get_text(dest, "nfe:xNome")[:150]
+        # ← MAIÚSCULO: razão social e fantasia do destinatário
+        razao       = get_text(dest, "nfe:xNome")[:150].upper()
         fantasia    = razao[:40]
         ender       = dest.find("nfe:enderDest", NS)
         logradouro  = get_text(ender, "nfe:xLgr")                    if ender is not None else ""
@@ -810,9 +797,10 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         contrib     = "N"
     else:
         inscricao    = get_text(emit, "nfe:CNPJ")
-        razao        = get_text(emit, "nfe:xNome")[:150]
+        # ← MAIÚSCULO: razão social e fantasia do emitente
+        razao        = get_text(emit, "nfe:xNome")[:150].upper()
         fantasia_raw = get_text(emit, "nfe:xFant")
-        fantasia     = fantasia_raw[:40] if fantasia_raw else razao[:40]
+        fantasia     = (fantasia_raw[:40].upper() if fantasia_raw else razao[:40])
         ender        = emit.find("nfe:enderEmit", NS)
         logradouro   = get_text(ender, "nfe:xLgr")                   if ender is not None else ""
         numero       = somente_numeros(get_text(ender, "nfe:nro"))    if ender is not None else ""
@@ -834,10 +822,6 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     ])
 
 def extrair_pis_cofins(det, aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0) -> dict:
-    """
-    Extrai PIS/COFINS do item.
-    V4.5: se alíquota reduzida → cst_e = "73"
-    """
     imposto = det.find("nfe:imposto", NS)
     resultado = {
         "cst_e": "", "aliq_pis_e": "", "aliq_cof_e": "",
@@ -866,7 +850,6 @@ def extrair_pis_cofins(det, aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0
                 aliq    = get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd")
                 aliq_f  = safe_float(aliq)
                 resultado["aliq_cof_e"] = fmt_decimal(aliq, 4)
-                # CST COFINS efetivo — usado no 0110
                 resultado["cst_cof_e"]  = cst_cof_efetivo(cst_xml, aliq_f, aliq_cof_pad)
                 break
     resultado["cst_s"]      = CST_ENTRADA_SAIDA.get(resultado["cst_e"], "")
@@ -880,7 +863,8 @@ def extrair_pis_cofins(det, aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
     cod_prod  = get_text(prod, "nfe:cProd")[:14]
-    descricao = get_text(prod, "nfe:xProd")
+    # ← MAIÚSCULO: descrição do produto
+    descricao = get_text(prod, "nfe:xProd").upper()
     ncm       = get_text(prod, "nfe:NCM")
     unidade   = get_text(prod, "nfe:uCom")
     val_unit  = get_text(prod, "nfe:vUnCom")
@@ -904,7 +888,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
     campos = [
-        "0100", cod_prod, descricao, "", ncm, "", "", "", cod_grupo,
+        "0100", cod_prod, descricao, DATA_CADASTRO_FIXO, ncm, "", "", "", cod_grupo,
         unidade, "N", "O", "", "", "", "N", "",
         fmt_decimal(val_unit, 3), "", "", cst_icms, aliq_icms, aliq_ipi, "M",
         "", "N", "", "", "", "", "", "", "", "", "N", "", "", "", "N", "",
@@ -921,20 +905,83 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
 def gerar_registro_0110(det, importacao: bool = False,
                          aliq_pis_pad: float = 0.0,
                          aliq_cof_pad: float = 0.0) -> str:
-    """
-    V4.5: passa alíquotas padrão para detectar CST 73 (redução linear).
-    """
     pc = extrair_pis_cofins(det, aliq_pis_pad, aliq_cof_pad)
     ct = pc["class_trib"]
     vinculo_credito = "08" if importacao else ""
-    return pipe_join([
-        "0110", "Inicial", pc["cst_e"], vinculo_credito, "01", "N", "N",
-        pc["aliq_pis_e"], pc["aliq_cof_e"], "N", "N", "", "", "", "",
-        pc["cst_s"], "N", "", "", "", "N", pc["aliq_pis_s"], pc["aliq_cof_s"],
-        "N", "N", "", "", "", "", "", "", "N", "N", "", "", "", "", "", "M",
-        "", "N", "N", "N", "", "N", "", "N", "", "", "", "", "", "", "N",
-        "", "", "N", "", "", "N", "", "N", "N", "N", ct, ct, "N", "N",
-    ])
+    campos = [
+        "0110",              # 1  - Identificador
+        DATA_CADASTRO_FIXO,  # 2  - Data início vigência ← era "Inicial"
+        pc["cst_e"],         # 3  - CST Entrada
+        vinculo_credito,     # 4  - Vínculo crédito
+        "01",                # 5  - Tipo crédito
+        "N",                 # 6
+        "N",                 # 7
+        pc["aliq_pis_e"],    # 8  - Alíq. PIS entrada
+        pc["aliq_cof_e"],    # 9  - Alíq. COFINS entrada
+        "N",                 # 10
+        "N",                 # 11
+        "",                  # 12
+        "",                  # 13
+        "",                  # 14
+        "",                  # 15
+        pc["cst_s"],         # 16 - CST Saída
+        "N",                 # 17
+        "",                  # 18
+        "",                  # 19
+        "",                  # 20
+        "N",                 # 21
+        pc["aliq_pis_s"],    # 22 - Alíq. PIS saída
+        pc["aliq_cof_s"],    # 23 - Alíq. COFINS saída
+        "N",                 # 24
+        "N",                 # 25
+        "",                  # 26
+        "",                  # 27
+        "",                  # 28
+        "",                  # 29
+        "",                  # 30
+        "",                  # 31
+        "N",                 # 32
+        "N",                 # 33
+        "",                  # 34
+        "",                  # 35
+        "",                  # 36
+        "",                  # 37
+        "",                  # 38
+        "M",                 # 39 - Unidade medida
+        "",                  # 40
+        "N",                 # 41
+        "N",                 # 42
+        "N",                 # 43
+        "",                  # 44
+        "N",                 # 45
+        "",                  # 46
+        "N",                 # 47
+        "",                  # 48
+        "",                  # 49
+        "",                  # 50
+        "",                  # 51
+        "",                  # 52
+        "",                  # 53
+        "N",                 # 54
+        "",                  # 55
+        "",                  # 56
+        "N",                 # 57
+        "",                  # 58
+        "",                  # 59
+        "N",                 # 60
+        "",                  # 61
+        "N",                 # 62
+        "N",                 # 63
+        "N",                 # 64
+        ct,                  # 65 - Class. tributária IBS
+        ct,                  # 66 - Class. tributária CBS
+        "N",                 # 67
+        "N",                 # 68
+    ]
+    # Garante exatamente 68 campos
+    while len(campos) < 68:
+        campos.append("")
+    return pipe_join(campos[:68])
 
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
@@ -985,13 +1032,13 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
             n_di = get_text(di_node, "nfe:nDI")
     tipo_doc_importacao = "1" if importacao else ""
     campos = [
-        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "", nNF, serie, "",
-        dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, emitente_nf, "", "", "",
-        "", "", "", "", "", v_frete, v_seg, v_outro, v_pis, "", v_cofins, "", "", "",
-        "", "", "", "", v_prod, c_mun_fg, "0", "", "", ie_forn, "", "", "", "", "",
-        "", "", n_di, "N", chave, "", "", "", "", "", "1", "", "", "", "", "", "", "",
-        "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", v_ipi, v_st, "", "", "", "", "", v_icms_d, "",
+        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "", nNF, serie, "",   # 1-10
+        dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, emitente_nf, "", "", "",         # 11-20
+        "", "", "", "", "", v_frete, v_seg, v_outro, v_pis, "", v_cofins, "", "", "",   # 21-34
+        "", "", "", "", v_prod, c_mun_fg, "0", "", "", ie_forn, "", "", "", "", "",     # 35-49
+        "", "", n_di, "N", chave, "", "", "", "", "", "",  # 50-61 ← campo 61 vazio (tipo serviço)
+        "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "", "", "", "", "", "", # 62-77
+        "", "", "", "", "", "", "", v_ipi, v_st, "", "", "", "", "", v_icms_d, "",      # 78-94
     ]
     if len(campos) < 98:
         campos.extend([""] * (98 - len(campos)))
@@ -1124,7 +1171,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                                 aliq=fmt_decimal(aliq_str),
                                 valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
 
-    # PIS — alíquota exata por item
     pis_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1151,7 +1197,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                                 aliq=fmt_decimal(aliq_str, 4),
                                 valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
 
-    # COFINS — alíquota exata por item
     cof_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1215,10 +1260,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
                          aliq_pis_pad: float = 0.0,
                          aliq_cof_pad: float = 0.0) -> str:
-    """
-    V4.5: CST PIS (campo 41) e CST COFINS (campo 43) recebem "73"
-          quando a alíquota do item for reduzida (menor que a padrão da nota).
-    """
     prod    = det.find("nfe:prod", NS)
     imposto = det.find("nfe:imposto", NS)
     cod_prod = get_text(prod, "nfe:cProd")[:14]
@@ -1304,7 +1345,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                     cbs_aliq = fmt_decimal(get_text(gcbs, "nfe:pCBS"))
                     cbs_val  = fmt_decimal(get_text(gcbs, "nfe:vCBS"))
 
-    # ── CST efetivo PIS/COFINS: 73 se alíquota reduzida ──────────────
     aliq_pis_f  = safe_float(aliq_pis.replace(",", "."))
     aliq_cof_f  = safe_float(aliq_cof.replace(",", "."))
     cst_pis_ef  = cst_pis_efetivo(cst_pis_xml, aliq_pis_f, aliq_pis_pad)
@@ -1358,14 +1398,14 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
         "",                       # 33
         cfop,                     # 34
         "",                       # 35
-        aliq_pis,                 # 36  ← alíquota exata (4 decimais)
+        aliq_pis,                 # 36
         v_pis,                    # 37
-        aliq_cof,                 # 38  ← alíquota exata (4 decimais)
+        aliq_cof,                 # 38
         v_cof,                    # 39
         fmt_decimal(v_prod),      # 40
-        cst_pis_ef,               # 41  ← CST PIS efetivo (73 se reduzido)
+        cst_pis_ef,               # 41
         bc_pis,                   # 42
-        cst_cof_ef,               # 43  ← CST COFINS efetivo (73 se reduzido)
+        cst_cof_ef,               # 43
         bc_cof,                   # 44
         "",                       # 45
         "",                       # 46
@@ -1517,7 +1557,6 @@ def converter_xml(
     if not cnpj_empresa:
         return "", {"erro": "CNPJ nao encontrado. Para importacao, informe o CNPJ Fallback."}, []
 
-    # ── Calcula alíquotas padrão da nota (para detectar redução linear) ──
     aliq_pis_pad, aliq_cof_pad = calcular_aliquotas_padrao_nota(nfe)
 
     lines     = []
@@ -1695,25 +1734,16 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V4.5-FINAL — CST 73 (Redução Linear) + Remoção botão UTF-8</h4>
+        <h4>V4.6-FINAL — Correções leiaute + Maiúsculas</h4>
         <ul>
-          <li><b>Regra nova — CST 73</b>: quando a alíquota de PIS ou COFINS de um item for
-              <b>menor</b> que a alíquota majoritária da nota, o sistema substitui
-              automaticamente a CST pelo código <b>73</b>
-              (Operação de Aquisição a Alíquota Diferenciada — Redução Linear).</li>
-          <li><b>Onde se aplica</b>:
-            <ul>
-              <li><b>1030 campo 41</b> — CST PIS do item</li>
-              <li><b>1030 campo 43</b> — CST COFINS do item</li>
-              <li><b>0110 campo 3</b> — CST Entrada da vigência do produto</li>
-            </ul>
-          </li>
-          <li><b>Relatório Excel</b>: colunas "CST PIS (Efet)" e "CST COF (Efet)" mostram o
-              CST efetivo; linhas com redução ficam destacadas em vermelho claro.
-              Aba "Resumo 1020" também sinaliza as alíquotas com CST 73.</li>
-          <li><b>Botão UTF-8 removido</b> — apenas download ANSI e Excel disponíveis.</li>
-          <li>Alíquota padrão detectada automaticamente pela maioria dos itens da nota.</li>
+          <li><b>Descrição produtos (0100)</b>: convertida para MAIÚSCULO via <code>.upper()</code>.</li>
+          <li><b>Razão social / Fantasia (0020)</b>: convertidas para MAIÚSCULO.</li>
+          <li><b>Data cadastro (0100 campo 4)</b>: fixada em <code>01/01/2020</code>.</li>
+          <li><b>Data vigência (0110 campo 2)</b>: fixada em <code>01/01/2020</code> (era "Inicial").</li>
+          <li><b>0110</b>: ajustado para exatamente <b>68 campos</b> conforme leiaute Domínio.</li>
+          <li><b>1000 campo 61</b>: tipo de serviço corrigido para vazio (era "1").</li>
         </ul>
+        <h4>V4.5-FINAL — CST 73 (Redução Linear)</h4>
         <h4>V4.4-FINAL — Alíquotas PIS/COFINS exatas por item + Relatório Excel</h4>
         <h4>V4.3-FINAL — Corrigido bug 1020 ausente</h4>
         <h4>V4.2-FINAL — Upload ZIP com filtro CFOP 3xxx</h4>
@@ -1783,7 +1813,6 @@ if uploaded_files:
     progress       = st.progress(0, text="Processando arquivos...")
 
     for i, arq in enumerate(arquivos_para_processar):
-        # Parse para relatório Excel
         try:
             root_xls = ET.fromstring(arq["bytes"])
             nfe_xls  = root_xls.find("nfe:NFe", NS) or root_xls
