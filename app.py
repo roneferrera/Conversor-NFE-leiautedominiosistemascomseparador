@@ -8,6 +8,7 @@ import io
 try:
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
     EXCEL_DISPONIVEL = True
 except ImportError:
     EXCEL_DISPONIVEL = False
@@ -604,7 +605,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     left         = Alignment(horizontal="left",   vertical="center")
     thin         = Side(style="thin", color="CCCCCC")
     border       = Border(left=thin, right=thin, top=thin, bottom=thin)
-    highlight    = PatternFill("solid", fgColor="FFF9C4")
     red_fill     = PatternFill("solid", fgColor="FFEBEE")
     if not dados_itens:
         ws["A1"] = "Nenhum dado disponivel."
@@ -709,8 +709,9 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         "CST COF (XML)": 13, "CST COF (Efet)": 13, "BC COFINS": 14, "Alíq. COFINS %": 14, "V. COFINS": 12,
         "Alíq. PIS Padrão": 16, "Alíq. COF Padrão": 16, "PIS Reduzido": 14, "COF Reduzida": 14,
     }
+    # ← CORRIGIDO: get_column_letter em vez de .column_letter
     for ci, col in enumerate(colunas, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=ci).column_letter].width = larguras.get(col, 14)
+        ws.column_dimensions[get_column_letter(ci)].width = larguras.get(col, 14)
     ws.row_dimensions[1].height = 20
     ws.row_dimensions[2].height = 28
     ws.freeze_panes = "A3"
@@ -762,8 +763,9 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
                 if ci in (2, 3, 4):
                     c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
             ri2 += 1
+    # ← CORRIGIDO: get_column_letter em vez de .column_letter
     for ci in range(1, 6):
-        ws2.column_dimensions[ws2.cell(row=1, column=ci).column_letter].width = 22
+        ws2.column_dimensions[get_column_letter(ci)].width = 22
     ws2.freeze_panes = "A3"
     buf = io.BytesIO()
     wb.save(buf)
@@ -777,7 +779,7 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
 
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
-        # ← MAIÚSCULO: razão social e fantasia do destinatário
+        # ← MAIÚSCULO
         razao       = get_text(dest, "nfe:xNome")[:150].upper()
         fantasia    = razao[:40]
         ender       = dest.find("nfe:enderDest", NS)
@@ -797,10 +799,10 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         contrib     = "N"
     else:
         inscricao    = get_text(emit, "nfe:CNPJ")
-        # ← MAIÚSCULO: razão social e fantasia do emitente
+        # ← MAIÚSCULO
         razao        = get_text(emit, "nfe:xNome")[:150].upper()
         fantasia_raw = get_text(emit, "nfe:xFant")
-        fantasia     = (fantasia_raw[:40].upper() if fantasia_raw else razao[:40])
+        fantasia     = fantasia_raw[:40].upper() if fantasia_raw else razao[:40]
         ender        = emit.find("nfe:enderEmit", NS)
         logradouro   = get_text(ender, "nfe:xLgr")                   if ender is not None else ""
         numero       = somente_numeros(get_text(ender, "nfe:nro"))    if ender is not None else ""
@@ -863,7 +865,7 @@ def extrair_pis_cofins(det, aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
     cod_prod  = get_text(prod, "nfe:cProd")[:14]
-    # ← MAIÚSCULO: descrição do produto
+    # ← MAIÚSCULO + DATA_CADASTRO_FIXO
     descricao = get_text(prod, "nfe:xProd").upper()
     ncm       = get_text(prod, "nfe:NCM")
     unidade   = get_text(prod, "nfe:uCom")
@@ -908,30 +910,31 @@ def gerar_registro_0110(det, importacao: bool = False,
     pc = extrair_pis_cofins(det, aliq_pis_pad, aliq_cof_pad)
     ct = pc["class_trib"]
     vinculo_credito = "08" if importacao else ""
+    # ← 68 campos exatos + DATA_CADASTRO_FIXO no campo 2
     campos = [
-        "0110",              # 1  - Identificador
-        DATA_CADASTRO_FIXO,  # 2  - Data início vigência ← era "Inicial"
-        pc["cst_e"],         # 3  - CST Entrada
-        vinculo_credito,     # 4  - Vínculo crédito
-        "01",                # 5  - Tipo crédito
+        "0110",              # 1
+        DATA_CADASTRO_FIXO,  # 2  ← era "Inicial"
+        pc["cst_e"],         # 3
+        vinculo_credito,     # 4
+        "01",                # 5
         "N",                 # 6
         "N",                 # 7
-        pc["aliq_pis_e"],    # 8  - Alíq. PIS entrada
-        pc["aliq_cof_e"],    # 9  - Alíq. COFINS entrada
+        pc["aliq_pis_e"],    # 8
+        pc["aliq_cof_e"],    # 9
         "N",                 # 10
         "N",                 # 11
         "",                  # 12
         "",                  # 13
         "",                  # 14
         "",                  # 15
-        pc["cst_s"],         # 16 - CST Saída
+        pc["cst_s"],         # 16
         "N",                 # 17
         "",                  # 18
         "",                  # 19
         "",                  # 20
         "N",                 # 21
-        pc["aliq_pis_s"],    # 22 - Alíq. PIS saída
-        pc["aliq_cof_s"],    # 23 - Alíq. COFINS saída
+        pc["aliq_pis_s"],    # 22
+        pc["aliq_cof_s"],    # 23
         "N",                 # 24
         "N",                 # 25
         "",                  # 26
@@ -947,7 +950,7 @@ def gerar_registro_0110(det, importacao: bool = False,
         "",                  # 36
         "",                  # 37
         "",                  # 38
-        "M",                 # 39 - Unidade medida
+        "M",                 # 39
         "",                  # 40
         "N",                 # 41
         "N",                 # 42
@@ -973,12 +976,11 @@ def gerar_registro_0110(det, importacao: bool = False,
         "N",                 # 62
         "N",                 # 63
         "N",                 # 64
-        ct,                  # 65 - Class. tributária IBS
-        ct,                  # 66 - Class. tributária CBS
+        ct,                  # 65
+        ct,                  # 66
         "N",                 # 67
         "N",                 # 68
     ]
-    # Garante exatamente 68 campos
     while len(campos) < 68:
         campos.append("")
     return pipe_join(campos[:68])
@@ -1036,7 +1038,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, emitente_nf, "", "", "",         # 11-20
         "", "", "", "", "", v_frete, v_seg, v_outro, v_pis, "", v_cofins, "", "", "",   # 21-34
         "", "", "", "", v_prod, c_mun_fg, "0", "", "", ie_forn, "", "", "", "", "",     # 35-49
-        "", "", n_di, "N", chave, "", "", "", "", "", "",  # 50-61 ← campo 61 vazio (tipo serviço)
+        "", "", n_di, "N", chave, "", "", "", "", "", "",  # 50-61 ← campo 61 vazio (era "1")
         "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "", "", "", "", "", "", # 62-77
         "", "", "", "", "", "", "", v_ipi, v_st, "", "", "", "", "", v_icms_d, "",      # 78-94
     ]
@@ -1363,123 +1365,23 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     vinculo_cof = "08" if importacao else ""
 
     campos = [
-        "1030",                   # 1
-        cod_prod,                 # 2
-        qtd,                      # 3
-        v_total,                  # 4
-        v_ipi,                    # 5
-        fmt_decimal(v_prod),      # 6
-        "1",                      # 7
-        d_di,                     # 8
-        n_di,                     # 9
-        cst_icms,                 # 10
-        fmt_decimal(v_prod),      # 11
-        fmt_decimal(v_desc),      # 12
-        v_bc_icms,                # 13
-        v_bc_st,                  # 14
-        aliq_icms,                # 15
-        "",                       # 16
-        "",                       # 17
-        "",                       # 18
-        "",                       # 19
-        fmt_decimal(v_outro),     # 20
-        "",                       # 21
-        v_icms,                   # 22
-        "",                       # 23
-        "",                       # 24
-        "",                       # 25
-        "",                       # 26
-        fmt_decimal(v_unit, 6),   # 27
-        "",                       # 28
-        cst_ipi,                  # 29
-        aliq_ipi,                 # 30
-        "",                       # 31
-        "",                       # 32
-        "",                       # 33
-        cfop,                     # 34
-        "",                       # 35
-        aliq_pis,                 # 36
-        v_pis,                    # 37
-        aliq_cof,                 # 38
-        v_cof,                    # 39
-        fmt_decimal(v_prod),      # 40
-        cst_pis_ef,               # 41
-        bc_pis,                   # 42
-        cst_cof_ef,               # 43
-        bc_cof,                   # 44
-        "",                       # 45
-        "",                       # 46
-        "",                       # 47
-        "",                       # 48
-        "",                       # 49
-        "",                       # 50
-        "",                       # 51
-        "",                       # 52
-        "",                       # 53
-        "",                       # 54
-        "",                       # 55
-        "S",                      # 56
-        unidade,                  # 57
-        "",                       # 58
-        "",                       # 59
-        fmt_decimal(v_prod),      # 60
-        "",                       # 61
-        "",                       # 62
-        "",                       # 63
-        "",                       # 64
-        "",                       # 65
-        "",                       # 66
-        "",                       # 67
-        "",                       # 68
-        "",                       # 69
-        "",                       # 70
-        "",                       # 71
-        vinculo_pis,              # 72
-        vinculo_cof,              # 73
-        "",                       # 74
-        "",                       # 75
-        "",                       # 76
-        "",                       # 77
-        "",                       # 78
-        "",                       # 79
-        "",                       # 80
-        "",                       # 81
-        "",                       # 82
-        "",                       # 83
-        "",                       # 84
-        "",                       # 85
-        "",                       # 86
-        "",                       # 87
-        "",                       # 88
-        "",                       # 89
-        "",                       # 90
-        cest,                     # 91
-        "",                       # 92
-        "",                       # 93
-        "",                       # 94
-        "",                       # 95
-        "",                       # 96
-        v_icms_des,               # 97
-        "",                       # 98
-        "",                       # 99
-        "",                       # 100
-        "",                       # 101
-        "",                       # 102
-        "",                       # 103
-        ibs_class_trib,           # 104
-        ibs_bc,                   # 105
-        ibs_aliq,                 # 106
-        ibs_val,                  # 107
-        cbs_class_trib,           # 108
-        cbs_bc,                   # 109
-        cbs_aliq,                 # 110
-        cbs_val,                  # 111
+        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod), "1",
+        d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
+        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "", fmt_decimal(v_outro),
+        "", v_icms, "", "", "", "", fmt_decimal(v_unit, 6), "", cst_ipi, aliq_ipi,
+        "", "", "", cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
+        fmt_decimal(v_prod), cst_pis_ef, bc_pis, cst_cof_ef, bc_cof,
+        "", "", "", "", "", "", "", "", "", "", "S", unidade, "", "",
+        fmt_decimal(v_prod), "", "", "", "", "", "", "", "", "", "",
+        vinculo_pis, vinculo_cof, "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", cest, "", "", "", "", "", v_icms_des, "", "", "",
+        "", "", "", ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
+        cbs_class_trib, cbs_bc, cbs_aliq, cbs_val,
     ]
-    if len(campos) != 111:
-        if len(campos) < 111:
-            campos.extend([""] * (111 - len(campos)))
-        else:
-            campos = campos[:111]
+    if len(campos) < 111:
+        campos.extend([""] * (111 - len(campos)))
+    else:
+        campos = campos[:111]
     return pipe_join(campos)
 
 def gerar_registro_1097(nfe_root) -> str:
@@ -1734,13 +1636,14 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V4.6-FINAL — Correções leiaute + Maiúsculas</h4>
+        <h4>V4.6-FINAL — Leiaute + Maiúsculas + Excel</h4>
         <ul>
-          <li><b>Descrição produtos (0100)</b>: convertida para MAIÚSCULO via <code>.upper()</code>.</li>
-          <li><b>Razão social / Fantasia (0020)</b>: convertidas para MAIÚSCULO.</li>
-          <li><b>Data cadastro (0100 campo 4)</b>: fixada em <code>01/01/2020</code>.</li>
-          <li><b>Data vigência (0110 campo 2)</b>: fixada em <code>01/01/2020</code> (era "Inicial").</li>
-          <li><b>0110</b>: ajustado para exatamente <b>68 campos</b> conforme leiaute Domínio.</li>
+          <li><b>Excel</b>: corrigido AttributeError <code>column_letter</code> → <code>get_column_letter(ci)</code>.</li>
+          <li><b>0020 razão/fantasia</b>: convertido para MAIÚSCULO.</li>
+          <li><b>0100 descrição</b>: convertida para MAIÚSCULO.</li>
+          <li><b>0100 campo 4</b>: data de cadastro fixada em <code>01/01/2020</code>.</li>
+          <li><b>0110 campo 2</b>: data de vigência fixada em <code>01/01/2020</code> (era "Inicial").</li>
+          <li><b>0110</b>: ajustado para exatamente <b>68 campos</b>.</li>
           <li><b>1000 campo 61</b>: tipo de serviço corrigido para vazio (era "1").</li>
         </ul>
         <h4>V4.5-FINAL — CST 73 (Redução Linear)</h4>
