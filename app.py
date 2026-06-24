@@ -5,7 +5,14 @@ import re
 import zipfile
 import io
 
-VERSAO = "V4.2-FINAL"
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    EXCEL_DISPONIVEL = True
+except ImportError:
+    EXCEL_DISPONIVEL = False
+
+VERSAO = "V4.5-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -40,7 +47,7 @@ st.markdown(f"""
         </h2>
         <p style="color:#DDDDDD; margin:6px 0 0 0; font-family:'Segoe UI',Arial,sans-serif;">
             Converte XML de NF-e para leiaute padrao de importacao do <strong>Dominio Sistemas</strong>.
-            Saida em <strong>ANSI (Latin-1)</strong>. Aceita arquivos <strong>XML</strong> ou <strong>ZIP</strong>.
+            Saida em <strong>ANSI (Latin-1)</strong>. Aceita <strong>XML</strong> ou <strong>ZIP</strong>.
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -61,7 +68,6 @@ CST_ENTRADA_SAIDA = {
     "73": "06", "74": "08", "70": "04", "99": "49",
 }
 
-# CSTs de IPI isentas — quando CST for um desses com IPI=0, NÃO vai para outras
 CST_IPI_ISENTAS = {"02", "03", "04", "05"}
 
 PAISES_BACEN_PARA_DOMINIO = {
@@ -272,60 +278,103 @@ def safe_float(v: str) -> float:
         return 0.0
 
 # ─────────────────────────────────────────────
+# DETECÇÃO DE ALÍQUOTA REDUZIDA PIS/COFINS
+# ── Calcula a alíquota majoritária da nota e
+#    retorna um set com as alíquotas "padrão".
+#    Itens com alíquota MENOR que a padrão
+#    recebem CST 73 (redução linear).
+# ─────────────────────────────────────────────
+def calcular_aliquotas_padrao_nota(nfe_root) -> tuple:
+    """
+    Retorna (aliq_pis_padrao: float, aliq_cof_padrao: float)
+    — a alíquota que aparece na maioria dos itens da nota.
+    """
+    det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
+    pis_vals = []
+    cof_vals = []
+    for det in det_list:
+        imp = det.find("nfe:imposto", NS)
+        if imp is None:
+            continue
+        pis_node = imp.find("nfe:PIS", NS)
+        if pis_node is not None:
+            for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
+                pn = pis_node.find(f"nfe:{pt}", NS)
+                if pn is not None:
+                    v = safe_float(get_text(pn, "nfe:pPIS") or get_text(pn, "nfe:vAliqProd"))
+                    if v > 0:
+                        pis_vals.append(v)
+                    break
+        cof_node = imp.find("nfe:COFINS", NS)
+        if cof_node is not None:
+            for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
+                cn = cof_node.find(f"nfe:{ct}", NS)
+                if cn is not None:
+                    v = safe_float(get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd"))
+                    if v > 0:
+                        cof_vals.append(v)
+                    break
+    # Alíquota majoritária = a que mais aparece; em caso de empate, a maior
+    def majoritaria(vals):
+        if not vals:
+            return 0.0
+        return max(set(vals), key=vals.count)
+    return majoritaria(pis_vals), majoritaria(cof_vals)
+
+def is_aliq_reduzida_pis(aliq: float, padrao: float) -> bool:
+    """True se a alíquota do item for menor que a padrão da nota."""
+    return padrao > 0 and aliq > 0 and aliq < padrao
+
+def is_aliq_reduzida_cof(aliq: float, padrao: float) -> bool:
+    return padrao > 0 and aliq > 0 and aliq < padrao
+
+def cst_pis_efetivo(cst_xml: str, aliq_item: float, aliq_padrao: float) -> str:
+    """
+    Retorna CST 73 se a alíquota for reduzida, senão mantém o CST do XML.
+    CST 73 = Operação de Aquisição a Alíquota Diferenciada (redução linear).
+    """
+    if is_aliq_reduzida_pis(aliq_item, aliq_padrao):
+        return "73"
+    return cst_xml
+
+def cst_cof_efetivo(cst_xml: str, aliq_item: float, aliq_padrao: float) -> str:
+    if is_aliq_reduzida_cof(aliq_item, aliq_padrao):
+        return "73"
+    return cst_xml
+
+# ─────────────────────────────────────────────
 # EXTRAÇÃO DE XMLs DE IMPORTAÇÃO DO ZIP
 # ─────────────────────────────────────────────
 def extrair_xmls_importacao_do_zip(zip_bytes: bytes) -> tuple:
-    """
-    Abre um arquivo ZIP e retorna apenas os XMLs cujo primeiro CFOP
-    começa com '3' (nota de importação).
-
-    Retorna:
-        xmls_importacao : list[dict]  → [{"nome": str, "bytes": bytes}, ...]
-        total_xml       : int         → total de XMLs encontrados no ZIP
-        ignorados       : list[str]   → nomes dos XMLs ignorados (CFOP ≠ 3xxx)
-        erros_parse     : list[str]   → nomes dos XMLs que falharam no parse
-    """
     xmls_importacao = []
     ignorados       = []
     erros_parse     = []
     total_xml       = 0
-
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for entry in zf.infolist():
                 nome = entry.filename
-                # ignora diretórios e arquivos que não sejam .xml
                 if entry.is_dir():
                     continue
                 if not nome.lower().endswith(".xml"):
                     continue
-
                 total_xml += 1
-                xml_bytes = zf.read(nome)
-
+                xml_bytes_item = zf.read(nome)
                 try:
-                    root = ET.fromstring(xml_bytes)
+                    root = ET.fromstring(xml_bytes_item)
                     nfe  = root.find("nfe:NFe", NS) or root
                     det_list = nfe.findall("nfe:infNFe/nfe:det", NS)
                     cfop = ""
                     if det_list:
                         cfop = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
-
-                    # Filtra: apenas CFOPs iniciados com "3"
                     if cfop.startswith("3"):
-                        xmls_importacao.append({
-                            "nome":  nome.split("/")[-1],   # só o nome do arquivo
-                            "bytes": xml_bytes,
-                        })
+                        xmls_importacao.append({"nome": nome.split("/")[-1], "bytes": xml_bytes_item})
                     else:
                         ignorados.append(f"{nome.split('/')[-1]} (CFOP {cfop or 'N/A'})")
-
                 except ET.ParseError:
                     erros_parse.append(nome.split("/")[-1])
-
     except zipfile.BadZipFile:
-        return [], 0, [], ["Arquivo ZIP inválido ou corrompido."]
-
+        return [], 0, [], ["Arquivo ZIP invalido ou corrompido."]
     return xmls_importacao, total_xml, ignorados, erros_parse
 
 # ─────────────────────────────────────────────
@@ -399,9 +448,6 @@ def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str) -> tuple:
         return cnpj_emit, "XML — <emit><CNPJ> (fallback)"
     return "", "Nao encontrado"
 
-# ─────────────────────────────────────────────
-# HELPER: IPI zero com CST não-isenta
-# ─────────────────────────────────────────────
 def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     for det in det_list:
@@ -417,14 +463,332 @@ def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
     return False
 
 # ─────────────────────────────────────────────
-# REGISTRO 0000
+# RELATÓRIO EXCEL
+# ─────────────────────────────────────────────
+def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
+                                  aliq_pis_pad: float = 0.0,
+                                  aliq_cof_pad: float = 0.0) -> list:
+    ide   = nfe_root.find("nfe:infNFe/nfe:ide", NS)
+    emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
+    dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
+    importacao = is_nota_importacao(nfe_root)
+    nNF    = get_text(ide, "nfe:nNF")
+    dhEmi  = fmt_date(get_text(ide, "nfe:dhEmi"))
+    chave  = extrair_chave_nfe(nfe_root)
+    emit_nome = get_text(emit, "nfe:xNome") if emit is not None else ""
+    forn_nome = get_text(dest, "nfe:xNome") if (importacao and dest is not None) else emit_nome
+    linhas = []
+    det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
+    for det in det_list:
+        seq  = det.get("nItem", "")
+        prod = det.find("nfe:prod", NS)
+        imp  = det.find("nfe:imposto", NS)
+        cod_prod  = get_text(prod, "nfe:cProd")
+        desc_prod = get_text(prod, "nfe:xProd")
+        ncm       = get_text(prod, "nfe:NCM")
+        cfop      = get_text(prod, "nfe:CFOP")
+        qtd       = get_text(prod, "nfe:qCom")
+        v_unit    = get_text(prod, "nfe:vUnCom")
+        v_prod    = get_text(prod, "nfe:vProd")
+        v_outro   = get_text(prod, "nfe:vOutro")
+        v_desc    = get_text(prod, "nfe:vDesc")
+        cst_icms = aliq_icms = bc_icms = v_icms = v_icms_des = ""
+        if imp is not None:
+            for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40",
+                       "ICMS51","ICMS60","ICMS70","ICMS90","ICMSSN101",
+                       "ICMSSN102","ICMSSN201","ICMSSN202","ICMSSN500","ICMSSN900"]:
+                node = imp.find(f"nfe:ICMS/nfe:{tp}", NS)
+                if node is not None:
+                    cst_icms  = get_text(node, "nfe:CST") or get_text(node, "nfe:CSOSN")
+                    aliq_icms = get_text(node, "nfe:pICMS")
+                    bc_icms   = get_text(node, "nfe:vBC")
+                    v_icms    = get_text(node, "nfe:vICMS")
+                    v_icms_des= get_text(node, "nfe:vICMSDeson")
+                    break
+        cst_ipi = aliq_ipi = bc_ipi = v_ipi = ""
+        if imp is not None:
+            ipi_trib = imp.find("nfe:IPI/nfe:IPITrib", NS)
+            ipi_nt   = imp.find("nfe:IPI/nfe:IPINT", NS)
+            if ipi_trib is not None:
+                cst_ipi  = get_text(ipi_trib, "nfe:CST")
+                aliq_ipi = get_text(ipi_trib, "nfe:pIPI")
+                bc_ipi   = get_text(ipi_trib, "nfe:vBC")
+                v_ipi    = get_text(ipi_trib, "nfe:vIPI")
+            elif ipi_nt is not None:
+                cst_ipi = get_text(ipi_nt, "nfe:CST")
+                v_ipi   = "0.00"
+        cst_pis_xml = aliq_pis = bc_pis = v_pis = ""
+        if imp is not None:
+            pis_node = imp.find("nfe:PIS", NS)
+            if pis_node is not None:
+                for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
+                    pn = pis_node.find(f"nfe:{pt}", NS)
+                    if pn is not None:
+                        cst_pis_xml = get_text(pn, "nfe:CST")
+                        aliq_pis    = get_text(pn, "nfe:pPIS") or get_text(pn, "nfe:vAliqProd")
+                        bc_pis      = get_text(pn, "nfe:vBC")
+                        v_pis       = get_text(pn, "nfe:vPIS")
+                        break
+        cst_cof_xml = aliq_cof = bc_cof = v_cof = ""
+        if imp is not None:
+            cof_node = imp.find("nfe:COFINS", NS)
+            if cof_node is not None:
+                for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
+                    cn = cof_node.find(f"nfe:{ct}", NS)
+                    if cn is not None:
+                        cst_cof_xml = get_text(cn, "nfe:CST")
+                        aliq_cof    = get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd")
+                        bc_cof      = get_text(cn, "nfe:vBC")
+                        v_cof       = get_text(cn, "nfe:vCOFINS")
+                        break
+        bc_ii = v_ii = ""
+        if imp is not None:
+            ii_node = imp.find("nfe:II", NS)
+            if ii_node is not None:
+                bc_ii = get_text(ii_node, "nfe:vBC")
+                v_ii  = get_text(ii_node, "nfe:vII")
+        aliq_pis_f = safe_float(aliq_pis)
+        aliq_cof_f = safe_float(aliq_cof)
+        cst_pis_ef = cst_pis_efetivo(cst_pis_xml, aliq_pis_f, aliq_pis_pad)
+        cst_cof_ef = cst_cof_efetivo(cst_cof_xml, aliq_cof_f, aliq_cof_pad)
+        def _f(v): return safe_float(v)
+        linhas.append({
+            "Arquivo":        nome_arquivo,
+            "NF":             nNF,
+            "Emissão":        dhEmi,
+            "Fornecedor":     forn_nome,
+            "Chave NF-e":     chave,
+            "Item":           seq,
+            "Cód. Produto":   cod_prod,
+            "Descrição":      desc_prod,
+            "NCM":            ncm,
+            "CFOP":           cfop,
+            "Qtd":            _f(qtd),
+            "V. Unit.":       _f(v_unit),
+            "V. Prod.":       _f(v_prod),
+            "V. Outro":       _f(v_outro),
+            "V. Desc.":       _f(v_desc),
+            "CST ICMS":       cst_icms,
+            "BC ICMS":        _f(bc_icms),
+            "Alíq. ICMS %":   _f(aliq_icms),
+            "V. ICMS":        _f(v_icms),
+            "V. ICMS Deson":  _f(v_icms_des),
+            "CST IPI":        cst_ipi,
+            "BC IPI":         _f(bc_ipi),
+            "Alíq. IPI %":    _f(aliq_ipi),
+            "V. IPI":         _f(v_ipi),
+            "BC II":          _f(bc_ii),
+            "V. II":          _f(v_ii),
+            "CST PIS (XML)":  cst_pis_xml,
+            "CST PIS (Efet)": cst_pis_ef,
+            "BC PIS":         _f(bc_pis),
+            "Alíq. PIS %":    aliq_pis_f,
+            "V. PIS":         _f(v_pis),
+            "CST COF (XML)":  cst_cof_xml,
+            "CST COF (Efet)": cst_cof_ef,
+            "BC COFINS":      _f(bc_cof),
+            "Alíq. COFINS %": aliq_cof_f,
+            "V. COFINS":      _f(v_cof),
+            "Alíq. PIS Padrão": aliq_pis_pad,
+            "Alíq. COF Padrão": aliq_cof_pad,
+            "PIS Reduzido":   "SIM" if cst_pis_ef == "73" else "NAO",
+            "COF Reduzida":   "SIM" if cst_cof_ef == "73" else "NAO",
+        })
+    return linhas
+
+def gerar_excel_relatorio(dados_itens: list) -> bytes:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Impostos por Item"
+    cinza_esc = "444444"
+    laranja   = "FF8000"
+    subhdr_icms  = PatternFill("solid", fgColor="1565C0")
+    subhdr_ipi   = PatternFill("solid", fgColor="6A1B9A")
+    subhdr_ii    = PatternFill("solid", fgColor="BF360C")
+    subhdr_pis   = PatternFill("solid", fgColor="1B5E20")
+    subhdr_cof   = PatternFill("solid", fgColor="E65100")
+    subhdr_prod  = PatternFill("solid", fgColor=laranja)
+    subhdr_ident = PatternFill("solid", fgColor=cinza_esc)
+    subhdr_red   = PatternFill("solid", fgColor="880000")
+    white_font   = Font(bold=True, color="FFFFFF", size=9)
+    alt_fill     = PatternFill("solid", fgColor="E9E9E9")
+    alt_fill2    = PatternFill("solid", fgColor="FFFFFF")
+    center       = Alignment(horizontal="center", vertical="center")
+    left         = Alignment(horizontal="left",   vertical="center")
+    thin         = Side(style="thin", color="CCCCCC")
+    border       = Border(left=thin, right=thin, top=thin, bottom=thin)
+    highlight    = PatternFill("solid", fgColor="FFF9C4")
+    red_fill     = PatternFill("solid", fgColor="FFEBEE")
+    if not dados_itens:
+        ws["A1"] = "Nenhum dado disponivel."
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+    colunas = list(dados_itens[0].keys())
+    grupos = {
+        "Identificação": ["Arquivo","NF","Emissão","Fornecedor","Chave NF-e","Item"],
+        "Produto":       ["Cód. Produto","Descrição","NCM","CFOP","Qtd","V. Unit.","V. Prod.","V. Outro","V. Desc."],
+        "ICMS":          ["CST ICMS","BC ICMS","Alíq. ICMS %","V. ICMS","V. ICMS Deson"],
+        "IPI":           ["CST IPI","BC IPI","Alíq. IPI %","V. IPI"],
+        "II":            ["BC II","V. II"],
+        "PIS":           ["CST PIS (XML)","CST PIS (Efet)","BC PIS","Alíq. PIS %","V. PIS"],
+        "COFINS":        ["CST COF (XML)","CST COF (Efet)","BC COFINS","Alíq. COFINS %","V. COFINS"],
+        "Redução Linear":["Alíq. PIS Padrão","Alíq. COF Padrão","PIS Reduzido","COF Reduzida"],
+    }
+    cor_grupo = {
+        "Identificação":  subhdr_ident,
+        "Produto":        subhdr_prod,
+        "ICMS":           subhdr_icms,
+        "IPI":            subhdr_ipi,
+        "II":             subhdr_ii,
+        "PIS":            subhdr_pis,
+        "COFINS":         subhdr_cof,
+        "Redução Linear": subhdr_red,
+    }
+    col_grupo = {}
+    for grp, cols in grupos.items():
+        for c in cols:
+            col_grupo[c] = grp
+    col_idx = 1
+    for grp, cols in grupos.items():
+        start = col_idx
+        end   = col_idx + len(cols) - 1
+        ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
+        cell = ws.cell(row=1, column=start, value=grp)
+        cell.fill      = cor_grupo[grp]
+        cell.font      = white_font
+        cell.alignment = center
+        cell.border    = border
+        col_idx = end + 1
+    for ci, col in enumerate(colunas, start=1):
+        cell = ws.cell(row=2, column=ci, value=col)
+        grp  = col_grupo.get(col, "Identificação")
+        cell.fill      = cor_grupo[grp]
+        cell.font      = white_font
+        cell.alignment = center
+        cell.border    = border
+    cols_num = {
+        "Qtd","V. Unit.","V. Prod.","V. Outro","V. Desc.",
+        "BC ICMS","Alíq. ICMS %","V. ICMS","V. ICMS Deson",
+        "BC IPI","Alíq. IPI %","V. IPI","BC II","V. II",
+        "BC PIS","Alíq. PIS %","V. PIS",
+        "BC COFINS","Alíq. COFINS %","V. COFINS",
+        "Alíq. PIS Padrão","Alíq. COF Padrão",
+    }
+    for ri, row in enumerate(dados_itens, start=3):
+        fill_base = alt_fill if ri % 2 == 1 else alt_fill2
+        pis_red = row.get("PIS Reduzido") == "SIM"
+        cof_red = row.get("COF Reduzida") == "SIM"
+        for ci, col in enumerate(colunas, start=1):
+            val  = row[col]
+            cell = ws.cell(row=ri, column=ci, value=val)
+            cell.border    = border
+            cell.alignment = center if col in cols_num else left
+            if col in ("CST PIS (Efet)","BC PIS","Alíq. PIS %","V. PIS","CST PIS (XML)") and pis_red:
+                cell.fill = red_fill
+            elif col in ("CST COF (Efet)","BC COFINS","Alíq. COFINS %","V. COFINS","CST COF (XML)") and cof_red:
+                cell.fill = red_fill
+            elif col in ("PIS Reduzido","COF Reduzida") and val == "SIM":
+                cell.fill = red_fill
+            else:
+                cell.fill = fill_base
+            if col in cols_num and isinstance(val, float):
+                if "Alíq" in col or "Padrão" in col:
+                    cell.number_format = '#,##0.0000'
+                else:
+                    cell.number_format = '#,##0.00'
+    tot_row = len(dados_itens) + 3
+    ws.cell(row=tot_row, column=1, value="TOTAL").font = Font(bold=True)
+    cols_soma = ["V. Prod.","V. Outro","V. Desc.","BC ICMS","V. ICMS","V. ICMS Deson",
+                 "BC IPI","V. IPI","BC II","V. II","BC PIS","V. PIS","BC COFINS","V. COFINS"]
+    tot_fill = PatternFill("solid", fgColor="FFF3E0")
+    for ci, col in enumerate(colunas, start=1):
+        cell = ws.cell(row=tot_row, column=ci)
+        cell.fill = tot_fill
+        cell.border = border
+        cell.font = Font(bold=True, size=9)
+        if col in cols_soma:
+            cell.value = sum(r[col] for r in dados_itens if isinstance(r[col], float))
+            cell.number_format = '#,##0.00'
+            cell.alignment = center
+    larguras = {
+        "Arquivo": 22, "NF": 10, "Emissão": 12, "Fornecedor": 30, "Chave NF-e": 46, "Item": 6,
+        "Cód. Produto": 18, "Descrição": 50, "NCM": 12, "CFOP": 8,
+        "Qtd": 10, "V. Unit.": 14, "V. Prod.": 14, "V. Outro": 12, "V. Desc.": 12,
+        "CST ICMS": 10, "BC ICMS": 14, "Alíq. ICMS %": 12, "V. ICMS": 14, "V. ICMS Deson": 14,
+        "CST IPI": 10, "BC IPI": 14, "Alíq. IPI %": 12, "V. IPI": 12,
+        "BC II": 14, "V. II": 12,
+        "CST PIS (XML)": 13, "CST PIS (Efet)": 13, "BC PIS": 14, "Alíq. PIS %": 12, "V. PIS": 12,
+        "CST COF (XML)": 13, "CST COF (Efet)": 13, "BC COFINS": 14, "Alíq. COFINS %": 14, "V. COFINS": 12,
+        "Alíq. PIS Padrão": 16, "Alíq. COF Padrão": 16, "PIS Reduzido": 14, "COF Reduzida": 14,
+    }
+    for ci, col in enumerate(colunas, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=ci).column_letter].width = larguras.get(col, 14)
+    ws.row_dimensions[1].height = 20
+    ws.row_dimensions[2].height = 28
+    ws.freeze_panes = "A3"
+    # Aba Resumo 1020
+    ws2 = wb.create_sheet("Resumo 1020")
+    ws2["A1"] = "Resumo das linhas 1020 (agrupado por alíquota)"
+    ws2["A1"].font = Font(bold=True, color=laranja, size=11)
+    hdr2 = ["Sigla","Base de Cálculo","Alíquota %","Valor Imposto","Obs"]
+    for ci, h in enumerate(hdr2, start=1):
+        c = ws2.cell(row=2, column=ci, value=h)
+        c.fill = PatternFill("solid", fgColor=cinza_esc)
+        c.font = white_font
+        c.alignment = center
+        c.border = border
+    pis_ag = {}
+    cof_ag = {}
+    for row in dados_itens:
+        k = row["Alíq. PIS %"]
+        if k not in pis_ag:
+            pis_ag[k] = {"bc": 0.0, "val": 0.0, "cst": row["CST PIS (Efet)"]}
+        pis_ag[k]["bc"]  += row["BC PIS"]
+        pis_ag[k]["val"] += row["V. PIS"]
+        k2 = row["Alíq. COFINS %"]
+        if k2 not in cof_ag:
+            cof_ag[k2] = {"bc": 0.0, "val": 0.0, "cst": row["CST COF (Efet)"]}
+        cof_ag[k2]["bc"]  += row["BC COFINS"]
+        cof_ag[k2]["val"] += row["V. COFINS"]
+    ri2 = 3
+    for aliq, d in sorted(pis_ag.items()):
+        if d["val"] > 0 or d["bc"] > 0:
+            obs = "CST 73 - Redução Linear" if d["cst"] == "73" else ""
+            row_fill = red_fill if d["cst"] == "73" else alt_fill2
+            for ci, v in enumerate([("PIS"), d["bc"], aliq, d["val"], obs], start=1):
+                c = ws2.cell(row=ri2, column=ci, value=v)
+                c.border = border
+                c.alignment = center
+                c.fill = row_fill
+                if ci in (2, 3, 4):
+                    c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
+            ri2 += 1
+    for aliq, d in sorted(cof_ag.items()):
+        if d["val"] > 0 or d["bc"] > 0:
+            obs = "CST 73 - Redução Linear" if d["cst"] == "73" else ""
+            row_fill = red_fill if d["cst"] == "73" else alt_fill2
+            for ci, v in enumerate([("COFINS"), d["bc"], aliq, d["val"], obs], start=1):
+                c = ws2.cell(row=ri2, column=ci, value=v)
+                c.border = border
+                c.alignment = center
+                c.fill = row_fill
+                if ci in (2, 3, 4):
+                    c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
+            ri2 += 1
+    for ci in range(1, 6):
+        ws2.column_dimensions[ws2.cell(row=1, column=ci).column_letter].width = 22
+    ws2.freeze_panes = "A3"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+# ─────────────────────────────────────────────
+# REGISTROS
 # ─────────────────────────────────────────────
 def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
-# ─────────────────────────────────────────────
-# REGISTRO 0020
-# ─────────────────────────────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
         razao       = get_text(dest, "nfe:xNome")[:150]
@@ -463,17 +827,17 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         regime_map   = {"1": "M", "2": "E", "3": "N"}
         regime       = regime_map.get(crt, "N")
         contrib      = "S" if ie and ie.upper() not in ("ISENTO", "NAO CONTRIBUINTE", "") else "N"
-
     return pipe_join([
         "0020", inscricao, razao, fantasia, logradouro, numero, complemento,
         bairro, cod_mun, uf_campo, cod_pais, cep, ie, "", "", "", "", "",
         "", "", "", "N", "7", regime, contrib, "", "", "", "", "N", "N", "", "",
     ])
 
-# ─────────────────────────────────────────────
-# EXTRAIR PIS/COFINS
-# ─────────────────────────────────────────────
-def extrair_pis_cofins(det) -> dict:
+def extrair_pis_cofins(det, aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0) -> dict:
+    """
+    Extrai PIS/COFINS do item.
+    V4.5: se alíquota reduzida → cst_e = "73"
+    """
     imposto = det.find("nfe:imposto", NS)
     resultado = {
         "cst_e": "", "aliq_pis_e": "", "aliq_cof_e": "",
@@ -487,8 +851,10 @@ def extrair_pis_cofins(det) -> dict:
         for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
             pn = pis_node.find(f"nfe:{pt}", NS)
             if pn is not None:
-                resultado["cst_e"] = get_text(pn, "nfe:CST")
-                aliq = get_text(pn, "nfe:pPIS") or get_text(pn, "nfe:vAliqProd")
+                cst_xml = get_text(pn, "nfe:CST")
+                aliq    = get_text(pn, "nfe:pPIS") or get_text(pn, "nfe:vAliqProd")
+                aliq_f  = safe_float(aliq)
+                resultado["cst_e"]      = cst_pis_efetivo(cst_xml, aliq_f, aliq_pis_pad)
                 resultado["aliq_pis_e"] = fmt_decimal(aliq, 4)
                 break
     cof_node = imposto.find("nfe:COFINS", NS)
@@ -496,8 +862,12 @@ def extrair_pis_cofins(det) -> dict:
         for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
             cn = cof_node.find(f"nfe:{ct}", NS)
             if cn is not None:
-                aliq = get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd")
+                cst_xml = get_text(cn, "nfe:CST")
+                aliq    = get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd")
+                aliq_f  = safe_float(aliq)
                 resultado["aliq_cof_e"] = fmt_decimal(aliq, 4)
+                # CST COFINS efetivo — usado no 0110
+                resultado["cst_cof_e"]  = cst_cof_efetivo(cst_xml, aliq_f, aliq_cof_pad)
                 break
     resultado["cst_s"]      = CST_ENTRADA_SAIDA.get(resultado["cst_e"], "")
     resultado["aliq_pis_s"] = resultado["aliq_pis_e"]
@@ -507,9 +877,6 @@ def extrair_pis_cofins(det) -> dict:
         resultado["class_trib"] = get_text(ibs_node, "nfe:cClassTrib")
     return resultado
 
-# ─────────────────────────────────────────────
-# REGISTRO 0100 – 92 campos
-# ─────────────────────────────────────────────
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
     cod_prod  = get_text(prod, "nfe:cProd")[:14]
@@ -536,7 +903,6 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
-
     campos = [
         "0100", cod_prod, descricao, "", ncm, "", "", "", cod_grupo,
         unidade, "N", "O", "", "", "", "N", "",
@@ -552,12 +918,13 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     campos = campos[:92]
     return pipe_join(campos)
 
-# ─────────────────────────────────────────────
-# REGISTRO 0110 – 70 campos
-# V4.1: importacao=True → campo 4 = "08"
-# ─────────────────────────────────────────────
-def gerar_registro_0110(det, importacao: bool = False) -> str:
-    pc = extrair_pis_cofins(det)
+def gerar_registro_0110(det, importacao: bool = False,
+                         aliq_pis_pad: float = 0.0,
+                         aliq_cof_pad: float = 0.0) -> str:
+    """
+    V4.5: passa alíquotas padrão para detectar CST 73 (redução linear).
+    """
+    pc = extrair_pis_cofins(det, aliq_pis_pad, aliq_cof_pad)
     ct = pc["class_trib"]
     vinculo_credito = "08" if importacao else ""
     return pipe_join([
@@ -569,9 +936,6 @@ def gerar_registro_0110(det, importacao: bool = False) -> str:
         "", "", "N", "", "", "N", "", "N", "N", "N", ct, ct, "N", "N",
     ])
 
-# ─────────────────────────────────────────────
-# REGISTRO 1000 – 98 campos
-# ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
                         especie: str = "36",
@@ -580,26 +944,21 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
     dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
-
     if importacao and dest is not None:
         id_ext    = get_text(dest, "nfe:idEstrangeiro").strip()
         cnpj_forn = id_ext if id_ext else ""
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ")
-
     emitente_nf = "P" if importacao else "T"
     ie_forn     = "" if importacao else get_text(emit, "nfe:IE")
-
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
     dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
     c_mun_fg = get_text(ide, "nfe:cMunFG")
-
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     cfop_first = ""
     if det_list:
         cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
-
     v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
     v_pis    = fmt_decimal(get_text(total, "nfe:vPIS"))
     v_cofins = fmt_decimal(get_text(total, "nfe:vCOFINS"))
@@ -610,27 +969,21 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     v_seg    = fmt_decimal(get_text(total, "nfe:vSeg"))
     v_outro  = fmt_decimal(get_text(total, "nfe:vOutro"))
     v_icms_d = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
-
     chave = extrair_chave_nfe(nfe_root)
-
     transp        = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     mod_frete_cod = get_text(transp, "nfe:modFrete")
     frete_map     = {"0":"C","1":"F","2":"S","3":"T","4":"R","5":"D","9":"S"}
     mod_frete     = frete_map.get(mod_frete_cod, "C")
-
     inf_adic  = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
     obs_fisco = ""
     if inf_adic is not None:
         obs_fisco = get_text(inf_adic, "nfe:infAdFisco")[:300]
-
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
-
     tipo_doc_importacao = "1" if importacao else ""
-
     campos = [
         "1000", especie, cnpj_forn, "", acumulador, cfop_first, "", nNF, serie, "",
         dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, emitente_nf, "", "", "",
@@ -640,12 +993,12 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "", "", "", "", "", "",
         "", "", "", "", "", "", "", v_ipi, v_st, "", "", "", "", "", v_icms_d, "",
     ]
-    assert len(campos) == 98, f"1000: esperado 98, gerado {len(campos)}"
+    if len(campos) < 98:
+        campos.extend([""] * (98 - len(campos)))
+    elif len(campos) > 98:
+        campos = campos[:98]
     return pipe_join(campos)
 
-# ─────────────────────────────────────────────
-# REGISTROS 1010 / 1015
-# ─────────────────────────────────────────────
 def gerar_registros_1010(nfe_root) -> list:
     linhas   = []
     inf_adic = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
@@ -674,9 +1027,6 @@ def gerar_registros_1015(nfe_root) -> list:
                 linhas.append(pipe_join(["1015", cod, bloco]))
     return linhas
 
-# ─────────────────────────────────────────────
-# REGISTROS 1020
-# ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     total    = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
@@ -718,8 +1068,7 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     v_prod_tot = fmt_decimal(get_text(total, "nfe:vProd"))
 
     if importacao:
-        ipi_float = safe_float(v_ipi_tot)
-        if ipi_float > 0:
+        if safe_float(v_ipi_tot) > 0:
             outras_icms = v_ipi_tot
         elif detectar_ipi_zero_nao_isento(nfe_root):
             outras_icms = v_prod_tot
@@ -728,8 +1077,7 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     else:
         outras_icms = ""
 
-    for aliq_str, dados in sorted(icms_por_aliq.items(),
-                                   key=lambda x: safe_float(x[0])):
+    for aliq_str, dados in sorted(icms_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
             linhas.append(r1020(
                 1,
@@ -737,7 +1085,7 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                 aliq  = fmt_decimal(aliq_str),
                 valor = fmt_decimal(str(dados["valor"])),
                 outras= outras_icms,
-                v_ipi = v_ipi_tot,
+                v_ipi = "" if outras_icms else v_ipi_tot,
                 v_st  = v_st_tot,
                 v_cont= v_nf,
             ))
@@ -766,27 +1114,17 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
             ipi_por_aliq[key]["bc"]      += v_prod_item
             ipi_por_aliq[key]["isentas"] += v_prod_item
 
-    for aliq_str, dados in sorted(ipi_por_aliq.items(),
-                                   key=lambda x: safe_float(x[0])):
+    for aliq_str, dados in sorted(ipi_por_aliq.items(), key=lambda x: safe_float(x[0])):
         aliq_f = safe_float(aliq_str)
         if aliq_f == 0 and dados["isentas"] > 0:
-            linhas.append(r1020(
-                2,
-                base    = fmt_decimal(str(dados["bc"])),
-                aliq    = "",
-                valor   = "",
-                isentas = fmt_decimal(str(dados["isentas"])),
-                v_cont  = v_nf,
-            ))
+            linhas.append(r1020(2, base=fmt_decimal(str(dados["bc"])),
+                                isentas=fmt_decimal(str(dados["isentas"])), v_cont=v_nf))
         elif dados["valor"] > 0 or (dados["bc"] > 0 and aliq_f > 0):
-            linhas.append(r1020(
-                2,
-                base  = fmt_decimal(str(dados["bc"])),
-                aliq  = fmt_decimal(aliq_str),
-                valor = fmt_decimal(str(dados["valor"])),
-                v_cont= v_nf,
-            ))
+            linhas.append(r1020(2, base=fmt_decimal(str(dados["bc"])),
+                                aliq=fmt_decimal(aliq_str),
+                                valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
 
+    # PIS — alíquota exata por item
     pis_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -797,7 +1135,7 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
             for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
                 pn = pis_node.find(f"nfe:{pt}", NS)
                 if pn is not None:
-                    aliq_str = get_text(pn, "nfe:pPIS") or "0"
+                    aliq_str = get_text(pn, "nfe:pPIS") or get_text(pn, "nfe:vAliqProd") or "0"
                     bc       = safe_float(get_text(pn, "nfe:vBC"))
                     valor    = safe_float(get_text(pn, "nfe:vPIS"))
                     key = aliq_str
@@ -807,17 +1145,13 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                     pis_por_aliq[key]["valor"] += valor
                     break
 
-    for aliq_str, dados in sorted(pis_por_aliq.items(),
-                                   key=lambda x: safe_float(x[0])):
+    for aliq_str, dados in sorted(pis_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
-            linhas.append(r1020(
-                4,
-                base  = fmt_decimal(str(dados["bc"])),
-                aliq  = fmt_decimal(aliq_str),
-                valor = fmt_decimal(str(dados["valor"])),
-                v_cont= v_nf,
-            ))
+            linhas.append(r1020(4, base=fmt_decimal(str(dados["bc"])),
+                                aliq=fmt_decimal(aliq_str, 4),
+                                valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
 
+    # COFINS — alíquota exata por item
     cof_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -828,7 +1162,7 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
             for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
                 cn = cof_node.find(f"nfe:{ct}", NS)
                 if cn is not None:
-                    aliq_str = get_text(cn, "nfe:pCOFINS") or "0"
+                    aliq_str = get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd") or "0"
                     bc       = safe_float(get_text(cn, "nfe:vBC"))
                     valor    = safe_float(get_text(cn, "nfe:vCOFINS"))
                     key = aliq_str
@@ -838,27 +1172,17 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                     cof_por_aliq[key]["valor"] += valor
                     break
 
-    for aliq_str, dados in sorted(cof_por_aliq.items(),
-                                   key=lambda x: safe_float(x[0])):
+    for aliq_str, dados in sorted(cof_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
-            linhas.append(r1020(
-                5,
-                base  = fmt_decimal(str(dados["bc"])),
-                aliq  = fmt_decimal(aliq_str),
-                valor = fmt_decimal(str(dados["valor"])),
-                v_cont= v_nf,
-            ))
+            linhas.append(r1020(5, base=fmt_decimal(str(dados["bc"])),
+                                aliq=fmt_decimal(aliq_str, 4),
+                                valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
 
-    for aliq_str, dados in sorted(icms_por_aliq.items(),
-                                   key=lambda x: safe_float(x[0])):
+    for aliq_str, dados in sorted(icms_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["deson"] > 0:
-            linhas.append(r1020(
-                45,
-                base  = fmt_decimal(str(dados["bc"])),
-                aliq  = fmt_decimal(aliq_str),
-                valor = fmt_decimal(str(dados["deson"])),
-                v_cont= v_nf,
-            ))
+            linhas.append(r1020(45, base=fmt_decimal(str(dados["bc"])),
+                                aliq=fmt_decimal(aliq_str),
+                                valor=fmt_decimal(str(dados["deson"])), v_cont=v_nf))
 
     v_pis_tot    = get_text(total, "nfe:vPIS")
     v_cofins_tot = get_text(total, "nfe:vCOFINS")
@@ -870,41 +1194,33 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
         for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
             pn = imp.find(f"nfe:PIS/nfe:{pt}", NS)
             if pn is not None:
-                try:
-                    bc_pis_total += float(get_text(pn, "nfe:vBC") or "0")
-                except ValueError:
-                    pass
+                try: bc_pis_total += float(get_text(pn, "nfe:vBC") or "0")
+                except ValueError: pass
                 break
         for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
             cn = imp.find(f"nfe:COFINS/nfe:{ct}", NS)
             if cn is not None:
-                try:
-                    bc_cof_total += float(get_text(cn, "nfe:vBC") or "0")
-                except ValueError:
-                    pass
+                try: bc_cof_total += float(get_text(cn, "nfe:vBC") or "0")
+                except ValueError: pass
                 break
 
     if v_pis_tot and safe_float(v_pis_tot) > 0:
-        linhas.append(r1020(133,
-            base  = fmt_decimal(str(bc_pis_total)),
-            valor = fmt_decimal(v_pis_tot),
-            v_cont= v_nf))
+        linhas.append(r1020(133, base=fmt_decimal(str(bc_pis_total)),
+                            valor=fmt_decimal(v_pis_tot), v_cont=v_nf))
     if v_cofins_tot and safe_float(v_cofins_tot) > 0:
-        linhas.append(r1020(134,
-            base  = fmt_decimal(str(bc_cof_total)),
-            valor = fmt_decimal(v_cofins_tot),
-            v_cont= v_nf))
-
+        linhas.append(r1020(134, base=fmt_decimal(str(bc_cof_total)),
+                            valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
     return linhas
 
-# ─────────────────────────────────────────────
-# REGISTRO 1030 – 111 campos
-# V4.1: importacao=True → campos 72/73 = "08"
-# ─────────────────────────────────────────────
-def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
+def gerar_registro_1030(det, seq: int, importacao: bool = False,
+                         aliq_pis_pad: float = 0.0,
+                         aliq_cof_pad: float = 0.0) -> str:
+    """
+    V4.5: CST PIS (campo 41) e CST COFINS (campo 43) recebem "73"
+          quando a alíquota do item for reduzida (menor que a padrão da nota).
+    """
     prod    = det.find("nfe:prod", NS)
     imposto = det.find("nfe:imposto", NS)
-
     cod_prod = get_text(prod, "nfe:cProd")[:14]
     qtd      = fmt_decimal(get_text(prod, "nfe:qCom"), 2)
     v_prod   = get_text(prod, "nfe:vProd")
@@ -914,16 +1230,14 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
     unidade  = get_text(prod, "nfe:uCom")
     v_unit   = get_text(prod, "nfe:vUnCom")
     cest     = get_text(prod, "nfe:CEST")
-
     di_node = prod.find("nfe:DI", NS)
     n_di    = somente_numeros(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
     d_di    = fmt_date(get_text(di_node, "nfe:dDI"))        if di_node is not None else ""
-
     icms_node  = None
     v_bc_icms  = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
     v_ipi = aliq_ipi = cst_ipi = ""
-    v_pis = aliq_pis = cst_pis = bc_pis = ""
-    v_cof = aliq_cof = cst_cof = bc_cof = ""
+    v_pis = aliq_pis = cst_pis_xml = bc_pis = ""
+    v_cof = aliq_cof = cst_cof_xml = bc_cof = ""
     ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
     cbs_class_trib = cbs_bc = cbs_aliq = cbs_val = ""
 
@@ -942,7 +1256,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
             cst_icms   = get_text(icms_node, "nfe:CST") or get_text(icms_node, "nfe:CSOSN")
             v_icms_des = fmt_decimal(get_text(icms_node, "nfe:vICMSDeson"))
             v_bc_st    = fmt_decimal(get_text(icms_node, "nfe:vBCST"))
-
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         ipi_nt   = imposto.find("nfe:IPI/nfe:IPINT", NS)
         if ipi_trib is not None:
@@ -952,29 +1265,28 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
         elif ipi_nt is not None:
             v_ipi = "0,00"; aliq_ipi = "0,00"
             cst_ipi = get_text(ipi_nt, "nfe:CST")
-
         pis_node = imposto.find("nfe:PIS", NS)
         if pis_node is not None:
             for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
                 pn = pis_node.find(f"nfe:{pt}", NS)
                 if pn is not None:
-                    v_pis    = fmt_decimal(get_text(pn, "nfe:vPIS"))
-                    aliq_pis = fmt_decimal(get_text(pn, "nfe:pPIS"), 4)
-                    cst_pis  = get_text(pn, "nfe:CST")
-                    bc_pis   = fmt_decimal(get_text(pn, "nfe:vBC"))
+                    cst_pis_xml = get_text(pn, "nfe:CST")
+                    aliq_raw    = get_text(pn, "nfe:pPIS") or get_text(pn, "nfe:vAliqProd")
+                    v_pis       = fmt_decimal(get_text(pn, "nfe:vPIS"))
+                    aliq_pis    = fmt_decimal(aliq_raw, 4)
+                    bc_pis      = fmt_decimal(get_text(pn, "nfe:vBC"))
                     break
-
         cof_node = imposto.find("nfe:COFINS", NS)
         if cof_node is not None:
             for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
                 cn = cof_node.find(f"nfe:{ct}", NS)
                 if cn is not None:
-                    v_cof    = fmt_decimal(get_text(cn, "nfe:vCOFINS"))
-                    aliq_cof = fmt_decimal(get_text(cn, "nfe:pCOFINS"), 4)
-                    cst_cof  = get_text(cn, "nfe:CST")
-                    bc_cof   = fmt_decimal(get_text(cn, "nfe:vBC"))
+                    cst_cof_xml = get_text(cn, "nfe:CST")
+                    aliq_raw    = get_text(cn, "nfe:pCOFINS") or get_text(cn, "nfe:vAliqProd")
+                    v_cof       = fmt_decimal(get_text(cn, "nfe:vCOFINS"))
+                    aliq_cof    = fmt_decimal(aliq_raw, 4)
+                    bc_cof      = fmt_decimal(get_text(cn, "nfe:vBC"))
                     break
-
         ibs_node = imposto.find("nfe:IBSCBS", NS)
         if ibs_node is not None:
             ibs_class_trib = get_text(ibs_node, "nfe:cClassTrib")
@@ -992,6 +1304,12 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
                     cbs_aliq = fmt_decimal(get_text(gcbs, "nfe:pCBS"))
                     cbs_val  = fmt_decimal(get_text(gcbs, "nfe:vCBS"))
 
+    # ── CST efetivo PIS/COFINS: 73 se alíquota reduzida ──────────────
+    aliq_pis_f  = safe_float(aliq_pis.replace(",", "."))
+    aliq_cof_f  = safe_float(aliq_cof.replace(",", "."))
+    cst_pis_ef  = cst_pis_efetivo(cst_pis_xml, aliq_pis_f, aliq_pis_pad)
+    cst_cof_ef  = cst_cof_efetivo(cst_cof_xml, aliq_cof_f, aliq_cof_pad)
+
     try:
         vp = float(v_prod or "0")
         vi = float(get_text(
@@ -1005,21 +1323,117 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
     vinculo_cof = "08" if importacao else ""
 
     campos = [
-        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod), "1",
-        d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
-        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "", fmt_decimal(v_outro),
-        "", v_icms, "", "", "", "", fmt_decimal(v_unit, 6), "", cst_ipi, aliq_ipi,
-        "", "", "", cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
-        fmt_decimal(v_prod), cst_pis, bc_pis, cst_cof, bc_cof,
-        "", "", "", "", "", "", "", "", "", "", "",
-        "S", unidade, "", "", fmt_decimal(v_prod),
-        "", "", "", "", "", "", "", "", "", "",
-        "", vinculo_pis, vinculo_cof, "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "", "",
-        cest, "", "", "", "", "", v_icms_des, "", "", "",
-        "", "", "",
-        ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
-        cbs_class_trib, cbs_bc, cbs_aliq, cbs_val,
+        "1030",                   # 1
+        cod_prod,                 # 2
+        qtd,                      # 3
+        v_total,                  # 4
+        v_ipi,                    # 5
+        fmt_decimal(v_prod),      # 6
+        "1",                      # 7
+        d_di,                     # 8
+        n_di,                     # 9
+        cst_icms,                 # 10
+        fmt_decimal(v_prod),      # 11
+        fmt_decimal(v_desc),      # 12
+        v_bc_icms,                # 13
+        v_bc_st,                  # 14
+        aliq_icms,                # 15
+        "",                       # 16
+        "",                       # 17
+        "",                       # 18
+        "",                       # 19
+        fmt_decimal(v_outro),     # 20
+        "",                       # 21
+        v_icms,                   # 22
+        "",                       # 23
+        "",                       # 24
+        "",                       # 25
+        "",                       # 26
+        fmt_decimal(v_unit, 6),   # 27
+        "",                       # 28
+        cst_ipi,                  # 29
+        aliq_ipi,                 # 30
+        "",                       # 31
+        "",                       # 32
+        "",                       # 33
+        cfop,                     # 34
+        "",                       # 35
+        aliq_pis,                 # 36  ← alíquota exata (4 decimais)
+        v_pis,                    # 37
+        aliq_cof,                 # 38  ← alíquota exata (4 decimais)
+        v_cof,                    # 39
+        fmt_decimal(v_prod),      # 40
+        cst_pis_ef,               # 41  ← CST PIS efetivo (73 se reduzido)
+        bc_pis,                   # 42
+        cst_cof_ef,               # 43  ← CST COFINS efetivo (73 se reduzido)
+        bc_cof,                   # 44
+        "",                       # 45
+        "",                       # 46
+        "",                       # 47
+        "",                       # 48
+        "",                       # 49
+        "",                       # 50
+        "",                       # 51
+        "",                       # 52
+        "",                       # 53
+        "",                       # 54
+        "",                       # 55
+        "S",                      # 56
+        unidade,                  # 57
+        "",                       # 58
+        "",                       # 59
+        fmt_decimal(v_prod),      # 60
+        "",                       # 61
+        "",                       # 62
+        "",                       # 63
+        "",                       # 64
+        "",                       # 65
+        "",                       # 66
+        "",                       # 67
+        "",                       # 68
+        "",                       # 69
+        "",                       # 70
+        "",                       # 71
+        vinculo_pis,              # 72
+        vinculo_cof,              # 73
+        "",                       # 74
+        "",                       # 75
+        "",                       # 76
+        "",                       # 77
+        "",                       # 78
+        "",                       # 79
+        "",                       # 80
+        "",                       # 81
+        "",                       # 82
+        "",                       # 83
+        "",                       # 84
+        "",                       # 85
+        "",                       # 86
+        "",                       # 87
+        "",                       # 88
+        "",                       # 89
+        "",                       # 90
+        cest,                     # 91
+        "",                       # 92
+        "",                       # 93
+        "",                       # 94
+        "",                       # 95
+        "",                       # 96
+        v_icms_des,               # 97
+        "",                       # 98
+        "",                       # 99
+        "",                       # 100
+        "",                       # 101
+        "",                       # 102
+        "",                       # 103
+        ibs_class_trib,           # 104
+        ibs_bc,                   # 105
+        ibs_aliq,                 # 106
+        ibs_val,                  # 107
+        cbs_class_trib,           # 108
+        cbs_bc,                   # 109
+        cbs_aliq,                 # 110
+        cbs_val,                  # 111
     ]
     if len(campos) != 111:
         if len(campos) < 111:
@@ -1028,9 +1442,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
             campos = campos[:111]
     return pipe_join(campos)
 
-# ─────────────────────────────────────────────
-# REGISTRO 1097
-# ─────────────────────────────────────────────
 def gerar_registro_1097(nfe_root) -> str:
     transp = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     if transp is None:
@@ -1068,9 +1479,6 @@ def gerar_registro_1097(nfe_root) -> str:
         "E", "", "", "", "D", "", "", "",
     ])
 
-# ─────────────────────────────────────────────
-# REGISTROS 1150 / 1151
-# ─────────────────────────────────────────────
 def gerar_registro_1150(ct, bc, aliq, valor) -> str:
     return pipe_join(["1150", ct, bc, aliq, valor])
 
@@ -1094,11 +1502,10 @@ def converter_xml(
     incluir_1097: bool = True,
     grupo_padrao: int = 0,
 ) -> tuple:
-
     try:
         root = ET.fromstring(xml_content)
     except ET.ParseError as e:
-        return "", {"erro": str(e)}
+        return "", {"erro": str(e)}, []
 
     nfe = root.find("nfe:NFe", NS)
     if nfe is None:
@@ -1108,7 +1515,10 @@ def converter_xml(
     cnpj_empresa, origem_cnpj = extrair_cnpj_empresa(nfe, cnpj_fallback)
 
     if not cnpj_empresa:
-        return "", {"erro": "CNPJ nao encontrado. Para importacao, informe o CNPJ Fallback."}
+        return "", {"erro": "CNPJ nao encontrado. Para importacao, informe o CNPJ Fallback."}, []
+
+    # ── Calcula alíquotas padrão da nota (para detectar redução linear) ──
+    aliq_pis_pad, aliq_cof_pad = calcular_aliquotas_padrao_nota(nfe)
 
     lines     = []
     resumo    = {}
@@ -1134,7 +1544,6 @@ def converter_xml(
             uf_forn = get_text(ender_e, "nfe:UF") if ender_e is not None else ""
 
     chave_resumo = extrair_chave_nfe(nfe)
-
     resumo["nNF"]            = get_text(ide, "nfe:nNF")
     resumo["Emitente"]       = get_text(emit, "nfe:xNome") if emit is not None else ""
     resumo["CNPJ Emit"]      = get_text(emit, "nfe:CNPJ")  if emit is not None else ""
@@ -1154,6 +1563,8 @@ def converter_xml(
     resumo["vCOFINS"]        = fmt_decimal(get_text(total, "nfe:vCOFINS"))
     resumo["Chave NF-e"]     = chave_resumo
     resumo["Cod Pais (Dom)"] = cod_pais_dominio
+    resumo["Alíq PIS Pad"]   = fmt_decimal(str(aliq_pis_pad), 4)
+    resumo["Alíq COF Pad"]   = fmt_decimal(str(aliq_cof_pad), 4)
     resumo["Grupo"]          = (
         f"{grupo_padrao} - {TABELA_GRUPOS.get(grupo_padrao,'GERAL')}"
         if grupo_padrao > 0 else "Auto (CFOP/NCM)"
@@ -1170,7 +1581,11 @@ def converter_xml(
             if cod not in produtos_gerados:
                 lines.append(gerar_registro_0100(det, grupo_padrao=grupo_padrao))
                 if incluir_0110:
-                    lines.append(gerar_registro_0110(det, importacao=importacao))
+                    lines.append(gerar_registro_0110(
+                        det, importacao=importacao,
+                        aliq_pis_pad=aliq_pis_pad,
+                        aliq_cof_pad=aliq_cof_pad,
+                    ))
                 produtos_gerados.add(cod)
 
     lines.append(gerar_registro_1000(nfe, cnpj_empresa, acumulador, especie, importacao))
@@ -1186,7 +1601,11 @@ def converter_xml(
         lines.append(r)
 
     for seq, det in enumerate(det_list, start=1):
-        lines.append(gerar_registro_1030(det, seq, importacao=importacao))
+        lines.append(gerar_registro_1030(
+            det, seq, importacao=importacao,
+            aliq_pis_pad=aliq_pis_pad,
+            aliq_cof_pad=aliq_cof_pad,
+        ))
 
     if incluir_1097:
         r1097 = gerar_registro_1097(nfe)
@@ -1208,25 +1627,21 @@ def converter_xml(
         if ct not in ibs_gerados:
             ibs_gerados[ct] = {"bc_ibs": 0.0, "v_ibs": 0.0, "aliq_ibs": "",
                                "bc_cbs": 0.0, "v_cbs": 0.0, "aliq_cbs": ""}
-        try:
-            ibs_gerados[ct]["bc_ibs"] += float(get_text(gibs, "nfe:vBC") or "0")
-        except ValueError:
-            pass
+        try: ibs_gerados[ct]["bc_ibs"] += float(get_text(gibs, "nfe:vBC") or "0")
+        except ValueError: pass
         guf = gibs.find("nfe:gIBSUF", NS)
         if guf is not None:
             try:
                 ibs_gerados[ct]["v_ibs"]   += float(get_text(guf, "nfe:vIBSUF") or "0")
                 ibs_gerados[ct]["aliq_ibs"] = get_text(guf, "nfe:pIBSUF")
-            except ValueError:
-                pass
+            except ValueError: pass
         gcbs = gibs.find("nfe:gCBS", NS)
         if gcbs is not None:
             try:
                 ibs_gerados[ct]["bc_cbs"]  += float(get_text(gibs, "nfe:vBC") or "0")
                 ibs_gerados[ct]["v_cbs"]   += float(get_text(gcbs, "nfe:vCBS") or "0")
                 ibs_gerados[ct]["aliq_cbs"] = get_text(gcbs, "nfe:pCBS")
-            except ValueError:
-                pass
+            except ValueError: pass
 
     for ct, d in ibs_gerados.items():
         lines.append(gerar_registro_1150(
@@ -1236,7 +1651,7 @@ def converter_xml(
             ct, fmt_decimal(str(d["bc_cbs"])),
             fmt_decimal(d["aliq_cbs"]), fmt_decimal(str(d["v_cbs"]))))
 
-    return "\n".join(lines), resumo
+    return "\n".join(lines), resumo, (aliq_pis_pad, aliq_cof_pad)
 
 # ─────────────────────────────────────────────
 # SIDEBAR
@@ -1248,10 +1663,7 @@ with st.sidebar:
     st.markdown("**Dominio Sistemas**")
     st.markdown("---")
     st.markdown("### Parametros")
-    cnpj_fallback = st.text_input(
-        "CNPJ da Empresa (obrigatorio para importacao)",
-        value="", max_chars=14,
-    )
+    cnpj_fallback = st.text_input("CNPJ da Empresa (obrigatorio para importacao)", value="", max_chars=14)
     acumulador = st.text_input("Codigo do Acumulador", value="1157")
     especie    = st.text_input("Codigo da Especie", value="36")
     st.markdown("---")
@@ -1274,39 +1686,37 @@ with st.sidebar:
         format_func=lambda x: f"{x} - {TABELA_GRUPOS[x]}" if x > 0 else TABELA_GRUPOS[x],
         index=0,
     )
-    st.caption("Auto: CFOP 3xxx → detectado automaticamente" if grupo_selecionado == 0
-               else f"Fixo: {grupo_selecionado} - {TABELA_GRUPOS[grupo_selecionado]}")
     st.markdown("---")
     with st.expander("Tabela de Grupos"):
         for cod, desc in sorted(TABELA_GRUPOS.items()):
             if cod > 0:
                 st.caption(f"`{cod:3d}` - {desc}")
-    with st.expander("Mapeamento CST Entrada → Saida"):
-        for ce, cs in CST_ENTRADA_SAIDA.items():
-            st.caption(f"CST {ce} → {cs}")
 
-# ─────────────────────────────────────────────
-# INSTRUÇÕES
-# ─────────────────────────────────────────────
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V4.2-FINAL — Upload de pasta ZIP com filtro automático de importação</h4>
+        <h4>V4.5-FINAL — CST 73 (Redução Linear) + Remoção botão UTF-8</h4>
         <ul>
-          <li>Aceita arquivos <b>ZIP</b> contendo múltiplos XMLs de NF-e.</li>
-          <li>O sistema extrai automaticamente <b>apenas os XMLs cujo CFOP inicia com "3"</b> (notas de importação).</li>
-          <li>XMLs com outros CFOPs são ignorados e listados no relatório.</li>
-          <li>Também continua aceitando upload direto de arquivos <b>XML</b> individuais.</li>
-          <li>Relatório de triagem: total encontrado, aproveitados, ignorados e erros de parse.</li>
+          <li><b>Regra nova — CST 73</b>: quando a alíquota de PIS ou COFINS de um item for
+              <b>menor</b> que a alíquota majoritária da nota, o sistema substitui
+              automaticamente a CST pelo código <b>73</b>
+              (Operação de Aquisição a Alíquota Diferenciada — Redução Linear).</li>
+          <li><b>Onde se aplica</b>:
+            <ul>
+              <li><b>1030 campo 41</b> — CST PIS do item</li>
+              <li><b>1030 campo 43</b> — CST COFINS do item</li>
+              <li><b>0110 campo 3</b> — CST Entrada da vigência do produto</li>
+            </ul>
+          </li>
+          <li><b>Relatório Excel</b>: colunas "CST PIS (Efet)" e "CST COF (Efet)" mostram o
+              CST efetivo; linhas com redução ficam destacadas em vermelho claro.
+              Aba "Resumo 1020" também sinaliza as alíquotas com CST 73.</li>
+          <li><b>Botão UTF-8 removido</b> — apenas download ANSI e Excel disponíveis.</li>
+          <li>Alíquota padrão detectada automaticamente pela maioria dos itens da nota.</li>
         </ul>
-        <h4>V4.1-FINAL — Vínculo de Crédito 08 + 1020 outras IPI zero</h4>
-        <ul>
-          <li>0110 campo 4: importação → <code>08</code></li>
-          <li>1030 campos 72/73: importação → <code>08</code></li>
-          <li>1020 ICMS campo "outras": IPI=0 e CST ≠ isenta → vProd total</li>
-        </ul>
-        <h4>V4.0-FINAL — 1020 ICMS: IPI em "outras" para importação</h4>
-        <h4>V3.9-FINAL — Corrigido AssertionError no Registro 1030</h4>
+        <h4>V4.4-FINAL — Alíquotas PIS/COFINS exatas por item + Relatório Excel</h4>
+        <h4>V4.3-FINAL — Corrigido bug 1020 ausente</h4>
+        <h4>V4.2-FINAL — Upload ZIP com filtro CFOP 3xxx</h4>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1316,7 +1726,8 @@ st.markdown("---")
 # UPLOAD E PROCESSAMENTO
 # ─────────────────────────────────────────────
 st.markdown("#### 📂 Upload de arquivos")
-st.caption("Aceita arquivos XML individuais **ou** uma pasta compactada em ZIP (somente XMLs com CFOP de importação serão processados).")
+st.caption("Aceita **XML** individuais ou pasta compactada em **ZIP** "
+           "(somente XMLs com CFOP de importação serão processados).")
 
 uploaded_files = st.file_uploader(
     "Selecione arquivos XML ou um arquivo ZIP",
@@ -1325,71 +1736,65 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    # ── Separar ZIPs de XMLs diretos ─────────────────────────────────
-    arquivos_para_processar = []   # lista de {"nome": str, "bytes": bytes}
-    relatorio_zip           = []   # feedback visual dos ZIPs
+    arquivos_para_processar = []
+    relatorio_zip           = []
 
     for f in uploaded_files:
         nome_lower = f.name.lower()
-
         if nome_lower.endswith(".zip"):
             zip_bytes = f.read()
-            xmls_imp, total_xml, ignorados, erros_parse = \
-                extrair_xmls_importacao_do_zip(zip_bytes)
-
+            xmls_imp, total_xml, ignorados, erros_parse = extrair_xmls_importacao_do_zip(zip_bytes)
             relatorio_zip.append({
-                "zip":        f.name,
-                "total":      total_xml,
-                "importacao": len(xmls_imp),
-                "ignorados":  ignorados,
-                "erros":      erros_parse,
+                "zip": f.name, "total": total_xml,
+                "importacao": len(xmls_imp), "ignorados": ignorados, "erros": erros_parse,
             })
             for item in xmls_imp:
                 arquivos_para_processar.append(item)
-
         elif nome_lower.endswith(".xml"):
-            arquivos_para_processar.append({
-                "nome":  f.name,
-                "bytes": f.read(),
-            })
+            arquivos_para_processar.append({"nome": f.name, "bytes": f.read()})
 
-    # ── Exibir relatório dos ZIPs ─────────────────────────────────────
     if relatorio_zip:
         st.markdown("#### 🗜️ Relatório de triagem dos ZIPs")
         for rz in relatorio_zip:
-            cor_borda = "#1565C0" if rz["importacao"] > 0 else "#F9A825"
-            classe    = "zip-info" if rz["importacao"] > 0 else "zip-warn"
+            classe = "zip-info" if rz["importacao"] > 0 else "zip-warn"
             st.markdown(
-                f'<div class="{classe}">'
-                f'<b>📦 {rz["zip"]}</b> — '
-                f'{rz["total"]} XML(s) encontrado(s) | '
-                f'<b>{rz["importacao"]} de importação (CFOP 3xxx) aproveitado(s)</b> | '
-                f'{len(rz["ignorados"])} ignorado(s) | '
-                f'{len(rz["erros"])} erro(s) de parse'
-                f'</div>',
+                f'<div class="{classe}"><b>📦 {rz["zip"]}</b> — '
+                f'{rz["total"]} XML(s) | <b>{rz["importacao"]} importação aproveitado(s)</b> | '
+                f'{len(rz["ignorados"])} ignorado(s) | {len(rz["erros"])} erro(s)</div>',
                 unsafe_allow_html=True,
             )
             if rz["ignorados"]:
-                with st.expander(f"XMLs ignorados de {rz['zip']} ({len(rz['ignorados'])})"):
-                    for nome_ig in rz["ignorados"]:
-                        st.caption(f"⏭️ {nome_ig}")
+                with st.expander(f"XMLs ignorados ({len(rz['ignorados'])})"):
+                    for n in rz["ignorados"]:
+                        st.caption(f"⏭️ {n}")
             if rz["erros"]:
-                with st.expander(f"Erros de parse em {rz['zip']} ({len(rz['erros'])})"):
-                    for nome_er in rz["erros"]:
-                        st.caption(f"❌ {nome_er}")
+                with st.expander(f"Erros de parse ({len(rz['erros'])})"):
+                    for n in rz["erros"]:
+                        st.caption(f"❌ {n}")
 
-    # ── Processar os XMLs selecionados ────────────────────────────────
     if not arquivos_para_processar:
         st.warning("Nenhum XML de importação encontrado para processar.")
         st.stop()
 
-    all_lines   = []
-    all_resumos = []
-    erros       = []
-    progress    = st.progress(0, text="Processando arquivos...")
+    all_lines      = []
+    all_resumos    = []
+    all_dados_xls  = []
+    erros          = []
+    progress       = st.progress(0, text="Processando arquivos...")
 
     for i, arq in enumerate(arquivos_para_processar):
-        texto, resumo = converter_xml(
+        # Parse para relatório Excel
+        try:
+            root_xls = ET.fromstring(arq["bytes"])
+            nfe_xls  = root_xls.find("nfe:NFe", NS) or root_xls
+            aliq_pis_p, aliq_cof_p = calcular_aliquotas_padrao_nota(nfe_xls)
+            dados_itens = extrair_dados_impostos_itens(
+                nfe_xls, arq["nome"], aliq_pis_p, aliq_cof_p)
+            all_dados_xls.extend(dados_itens)
+        except Exception:
+            pass
+
+        texto, resumo, _ = converter_xml(
             arq["bytes"],
             cnpj_fallback  = cnpj_fallback,
             acumulador     = acumulador,
@@ -1437,7 +1842,8 @@ if uploaded_files:
                         f'<div class="info-origem" style="border-left-color:{cor};">'
                         f'{r.get("Origem CNPJ","")}<br>'
                         f'{"Importacao | Forn: " + r.get("Fornecedor","")[:40] + pais_info if is_imp else "Forn: " + r.get("Fornecedor","")[:50]}'
-                        f'<br><small>Emitente NF: {r.get("Emitente NF","")}</small>'
+                        f'<br><small>Alíq. PIS pad: {r.get("Alíq PIS Pad","")} | '
+                        f'COFINS pad: {r.get("Alíq COF Pad","")}</small>'
                         f'<br><small>Chave: {r.get("Chave NF-e","")[:22]}...</small>'
                         f'</div>',
                         unsafe_allow_html=True,
@@ -1466,13 +1872,17 @@ if uploaded_files:
                 type="primary",
             )
         with col2:
-            st.download_button(
-                label="⬇️ Baixar Arquivo (.TXT UTF-8)",
-                data=saida_final.encode("utf-8"),
-                file_name="importacao_dominio_utf8.txt",
-                mime="text/plain",
-                use_container_width=True,
-            )
+            if EXCEL_DISPONIVEL and all_dados_xls:
+                excel_bytes = gerar_excel_relatorio(all_dados_xls)
+                st.download_button(
+                    label="📊 Baixar Relatório Excel (.XLSX)",
+                    data=excel_bytes,
+                    file_name="relatorio_impostos.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+            elif not EXCEL_DISPONIVEL:
+                st.warning("openpyxl não instalado. Execute: pip install openpyxl")
 
         st.markdown("---")
         st.markdown("#### Estatísticas")
