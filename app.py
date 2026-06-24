@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V3.9-FINAL"
+VERSAO = "V4.1-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -56,6 +56,10 @@ CST_ENTRADA_SAIDA = {
     "50": "01", "51": "02", "52": "08",
     "73": "06", "74": "08", "70": "04", "99": "49",
 }
+
+# CSTs de IPI consideradas "isentas" — quando o CST for um desses,
+# NÃO joga para outras (mesmo com IPI zerado)
+CST_IPI_ISENTAS = {"02", "03", "04", "05"}
 
 PAISES_BACEN_PARA_DOMINIO = {
     "0132": 1,   "7560": 2,   "0175": 3,   "0230": 4,   "0370": 5,
@@ -336,6 +340,30 @@ def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str) -> tuple:
     return "", "Nao encontrado"
 
 # ─────────────────────────────────────────────
+# HELPER: detecta se a nota tem IPI zerado com
+# CST diferente de isentas em TODOS os itens
+# ─────────────────────────────────────────────
+def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
+    """
+    Retorna True se a nota tiver pelo menos um item com:
+      - IPI presente (IPITrib) com valor = 0
+      - CST do IPI NÃO pertence ao conjunto de isentas (02,03,04,05)
+    Usado para decidir se joga vProd para 'outras' no 1020 ICMS.
+    """
+    det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
+    for det in det_list:
+        imp = det.find("nfe:imposto", NS)
+        if imp is None:
+            continue
+        ipi_trib = imp.find("nfe:IPI/nfe:IPITrib", NS)
+        if ipi_trib is not None:
+            cst = get_text(ipi_trib, "nfe:CST").strip().zfill(2)
+            v_ipi = safe_float(get_text(ipi_trib, "nfe:vIPI"))
+            if v_ipi == 0 and cst not in CST_IPI_ISENTAS:
+                return True
+    return False
+
+# ─────────────────────────────────────────────
 # REGISTRO 0000
 # ─────────────────────────────────────────────
 def gerar_registro_0000(cnpj_empresa: str) -> str:
@@ -473,17 +501,84 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
 
 # ─────────────────────────────────────────────
 # REGISTRO 0110 – 70 campos
+# V4.1: importacao=True → campo 4 (Vínculo de Crédito) = "08"
 # ─────────────────────────────────────────────
-def gerar_registro_0110(det) -> str:
+def gerar_registro_0110(det, importacao: bool = False) -> str:
     pc = extrair_pis_cofins(det)
     ct = pc["class_trib"]
+    # Campo 4 = Vínculo do Crédito: 08 = Crédito de importação
+    vinculo_credito = "08" if importacao else ""
     return pipe_join([
-        "0110", "Inicial", pc["cst_e"], "", "01", "N", "N",
-        pc["aliq_pis_e"], pc["aliq_cof_e"], "N", "N", "", "", "", "",
-        pc["cst_s"], "N", "", "", "", "N", pc["aliq_pis_s"], pc["aliq_cof_s"],
-        "N", "N", "", "", "", "", "", "", "N", "N", "", "", "", "", "", "M",
-        "", "N", "N", "N", "", "N", "", "N", "", "", "", "", "", "", "N",
-        "", "", "N", "", "", "N", "", "N", "N", "N", ct, ct, "N", "N",
+        "0110",              # 1
+        "Inicial",           # 2
+        pc["cst_e"],         # 3
+        vinculo_credito,     # 4  ← 08 quando importação
+        "01",                # 5
+        "N",                 # 6
+        "N",                 # 7
+        pc["aliq_pis_e"],    # 8
+        pc["aliq_cof_e"],    # 9
+        "N",                 # 10
+        "N",                 # 11
+        "",                  # 12
+        "",                  # 13
+        "",                  # 14
+        "",                  # 15
+        pc["cst_s"],         # 16
+        "N",                 # 17
+        "",                  # 18
+        "",                  # 19
+        "",                  # 20
+        "N",                 # 21
+        pc["aliq_pis_s"],    # 22
+        pc["aliq_cof_s"],    # 23
+        "N",                 # 24
+        "N",                 # 25
+        "",                  # 26
+        "",                  # 27
+        "",                  # 28
+        "",                  # 29
+        "",                  # 30
+        "",                  # 31
+        "N",                 # 32
+        "N",                 # 33
+        "",                  # 34
+        "",                  # 35
+        "",                  # 36
+        "",                  # 37
+        "",                  # 38
+        "M",                 # 39 (IPI periodicidade)
+        "",                  # 40
+        "N",                 # 41
+        "N",                 # 42
+        "N",                 # 43
+        "",                  # 44
+        "N",                 # 45
+        "",                  # 46
+        "N",                 # 47
+        "",                  # 48
+        "",                  # 49
+        "",                  # 50
+        "",                  # 51
+        "",                  # 52
+        "",                  # 53
+        "",                  # 54
+        "N",                 # 55
+        "",                  # 56
+        "",                  # 57
+        "N",                 # 58
+        "",                  # 59
+        "",                  # 60
+        "N",                 # 61
+        "",                  # 62
+        "N",                 # 63
+        "N",                 # 64
+        "N",                 # 65
+        ct,                  # 66 IBS cClassTrib
+        ct,                  # 67 CBS cClassTrib
+        "N",                 # 68
+        "N",                 # 69
+        "",                  # 70
     ])
 
 # ─────────────────────────────────────────────
@@ -684,8 +779,10 @@ def gerar_registros_1015(nfe_root) -> list:
 
 # ─────────────────────────────────────────────
 # REGISTROS 1020 – por alíquota
+# V4.0: importacao=True + IPI > 0  → IPI vai para "outras" na linha ICMS
+# V4.1: importacao=True + IPI = 0 + CST ≠ isenta → vProd vai para "outras"
 # ─────────────────────────────────────────────
-def gerar_registros_1020(nfe_root) -> list:
+def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     total    = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
@@ -724,6 +821,23 @@ def gerar_registros_1020(nfe_root) -> list:
 
     v_ipi_tot = fmt_decimal(get_text(total, "nfe:vIPI"))
     v_st_tot  = fmt_decimal(get_text(total, "nfe:vST"))
+    v_prod_tot = fmt_decimal(get_text(total, "nfe:vProd"))
+
+    # ── Lógica do campo "outras" na linha ICMS (importação) ───────────
+    # Regra 1: IPI > 0  → outras = vIPI total
+    # Regra 2: IPI = 0 E CST ≠ isenta → outras = vProd total
+    # Regra 3: nacional ou IPI isento  → outras = ""
+    if importacao:
+        ipi_float = safe_float(v_ipi_tot)
+        if ipi_float > 0:
+            outras_icms = v_ipi_tot          # Regra 1
+        elif detectar_ipi_zero_nao_isento(nfe_root):
+            outras_icms = v_prod_tot         # Regra 2
+        else:
+            outras_icms = ""                 # isento/NT
+    else:
+        outras_icms = ""                     # nacional
+
     for aliq_str, dados in sorted(icms_por_aliq.items(),
                                    key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
@@ -732,13 +846,13 @@ def gerar_registros_1020(nfe_root) -> list:
                 base  = fmt_decimal(str(dados["bc"])),
                 aliq  = fmt_decimal(aliq_str),
                 valor = fmt_decimal(str(dados["valor"])),
+                outras= outras_icms,
                 v_ipi = v_ipi_tot,
                 v_st  = v_st_tot,
                 v_cont= v_nf,
             ))
 
     # ── IPI: agrupa por alíquota ──────────────────────────────────────
-    # Estrutura: aliq_str → {"bc": float, "valor": float, "isentas": float}
     ipi_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -756,7 +870,6 @@ def gerar_registros_1020(nfe_root) -> list:
             ipi_por_aliq[key]["bc"]    += bc
             ipi_por_aliq[key]["valor"] += valor
         elif ipi_nt is not None:
-            # NT: base isenta = vProd do item
             v_prod_item = safe_float(get_text(det.find("nfe:prod", NS), "nfe:vProd"))
             key = "0"
             if key not in ipi_por_aliq:
@@ -764,12 +877,10 @@ def gerar_registros_1020(nfe_root) -> list:
             ipi_por_aliq[key]["bc"]      += v_prod_item
             ipi_por_aliq[key]["isentas"] += v_prod_item
 
-    # Gera linhas 1020 IPI — NT primeiro (aliq=0), depois tributadas
     for aliq_str, dados in sorted(ipi_por_aliq.items(),
                                    key=lambda x: safe_float(x[0])):
         aliq_f = safe_float(aliq_str)
         if aliq_f == 0 and dados["isentas"] > 0:
-            # Linha NT/isentas: base = isentas, aliq e valor vazios
             linhas.append(r1020(
                 2,
                 base    = fmt_decimal(str(dados["bc"])),
@@ -851,7 +962,7 @@ def gerar_registros_1020(nfe_root) -> list:
                 v_cont= v_nf,
             ))
 
-    # ── ICMS Desonerado: agrupa por alíquota (cód 45) ─────────────────
+    # ── ICMS Desonerado (cód 45) ──────────────────────────────────────
     for aliq_str, dados in sorted(icms_por_aliq.items(),
                                    key=lambda x: safe_float(x[0])):
         if dados["deson"] > 0:
@@ -863,7 +974,7 @@ def gerar_registros_1020(nfe_root) -> list:
                 v_cont= v_nf,
             ))
 
-    # ── PIS SPED (133) e COFINS SPED (134): totais únicos ────────────
+    # ── PIS SPED (133) e COFINS SPED (134) ───────────────────────────
     v_pis_tot    = get_text(total, "nfe:vPIS")
     v_cofins_tot = get_text(total, "nfe:vCOFINS")
     bc_pis_total = bc_cof_total = 0.0
@@ -903,9 +1014,10 @@ def gerar_registros_1020(nfe_root) -> list:
 
 # ─────────────────────────────────────────────
 # REGISTRO 1030 – 111 campos
-# V3.9: assert removido, campos contados explicitamente 1 a 111
+# V4.1: importacao=True → campos 72 e 73
+#       (Vínculo de Crédito PIS / COFINS) = "08"
 # ─────────────────────────────────────────────
-def gerar_registro_1030(det, seq: int) -> str:
+def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
     prod    = det.find("nfe:prod", NS)
     imposto = det.find("nfe:imposto", NS)
 
@@ -1005,7 +1117,10 @@ def gerar_registro_1030(det, seq: int) -> str:
     except (ValueError, TypeError):
         v_total = fmt_decimal(v_prod)
 
-    # ── 111 campos exatos conforme layout 46 - Registro 1030 ─────────
+    # Vínculo de Crédito PIS/COFINS: 08 = Crédito de importação
+    vinculo_pis  = "08" if importacao else ""
+    vinculo_cof  = "08" if importacao else ""
+
     campos = [
         "1030",                   # 1
         cod_prod,                 # 2
@@ -1078,8 +1193,8 @@ def gerar_registro_1030(det, seq: int) -> str:
         "",                       # 69
         "",                       # 70
         "",                       # 71
-        "",                       # 72
-        "",                       # 73
+        vinculo_pis,              # 72  ← Vínculo de Crédito PIS  (08 = importação)
+        vinculo_cof,              # 73  ← Vínculo de Crédito COFINS (08 = importação)
         "",                       # 74
         "",                       # 75
         "",                       # 76
@@ -1119,7 +1234,6 @@ def gerar_registro_1030(det, seq: int) -> str:
         cbs_aliq,                 # 110
         cbs_val,                  # 111
     ]
-    # Validação de segurança — não lança assert, apenas corrige silenciosamente
     if len(campos) != 111:
         if len(campos) < 111:
             campos.extend([""] * (111 - len(campos)))
@@ -1269,7 +1383,8 @@ def converter_xml(
             if cod not in produtos_gerados:
                 lines.append(gerar_registro_0100(det, grupo_padrao=grupo_padrao))
                 if incluir_0110:
-                    lines.append(gerar_registro_0110(det))
+                    # ← passa importacao para gerar campo 4 = 08
+                    lines.append(gerar_registro_0110(det, importacao=importacao))
                 produtos_gerados.add(cod)
 
     lines.append(gerar_registro_1000(nfe, cnpj_empresa, acumulador, especie, importacao))
@@ -1281,11 +1396,12 @@ def converter_xml(
         for r in gerar_registros_1015(nfe):
             lines.append(r)
 
-    for r in gerar_registros_1020(nfe):
+    for r in gerar_registros_1020(nfe, importacao):
         lines.append(r)
 
     for seq, det in enumerate(det_list, start=1):
-        lines.append(gerar_registro_1030(det, seq))
+        # ← passa importacao para gerar campos 72/73 = 08
+        lines.append(gerar_registro_1030(det, seq, importacao=importacao))
 
     if incluir_1097:
         r1097 = gerar_registro_1097(nfe)
@@ -1390,17 +1506,22 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V3.9-FINAL — Corrigido AssertionError no Registro 1030</h4>
+        <h4>V4.1-FINAL — Vínculo de Crédito 08 + 1020 outras IPI zero</h4>
         <ul>
-          <li><b>Causa raiz</b>: o <code>assert len(campos) == 111</code> lançava erro porque versões anteriores do código tinham campos faltando entre as posições 56-103</li>
-          <li><b>Correção</b>: lista de 111 campos reescrita explicitamente (campos 1 a 111) com autocorreção silenciosa ao invés de assert</li>
-          <li><b>1030 campos 56-103</b>: todos os 48 campos intermediários agora estão presentes e numerados</li>
-          <li>Campos 104-111 (IBS/CBS) mantidos corretamente</li>
+          <li><b>0110 campo 4</b>: importação → <code>08</code> (Crédito de importação)</li>
+          <li><b>1030 campos 72 e 73</b>: importação → <code>08</code> (Vínculo de Crédito PIS e COFINS)</li>
+          <li><b>1020 ICMS campo "outras"</b> — 3 regras para importação:
+            <ul>
+              <li>IPI &gt; 0 → <code>outras = vIPI total</code> (regra V4.0)</li>
+              <li>IPI = 0 e CST ≠ isenta (02/03/04/05) → <code>outras = vProd total</code> (regra nova)</li>
+              <li>IPI isento/NT ou nota nacional → <code>outras = ""</code></li>
+            </ul>
+          </li>
         </ul>
+        <h4>V4.0-FINAL — 1020 ICMS: IPI em "outras" para importação com IPI</h4>
+        <h4>V3.9-FINAL — Corrigido AssertionError no Registro 1030</h4>
         <h4>V3.8-FINAL — 1020: uma linha por alíquota (ICMS e IPI)</h4>
         <h4>V3.7-FINAL — Contagem exata 98 campos no 1000</h4>
-        <h4>V3.6-FINAL — Removidos 183/184 do 1020</h4>
-        <h4>V3.5-FINAL — Campos numéricos/decimais no 0100 e 0110</h4>
         </div>
     """, unsafe_allow_html=True)
 
