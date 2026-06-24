@@ -709,7 +709,7 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         "CST COF (XML)": 13, "CST COF (Efet)": 13, "BC COFINS": 14, "Alíq. COFINS %": 14, "V. COFINS": 12,
         "Alíq. PIS Padrão": 16, "Alíq. COF Padrão": 16, "PIS Reduzido": 14, "COF Reduzida": 14,
     }
-    # ← CORRIGIDO: get_column_letter em vez de .column_letter
+    # ← CORRIGIDO: get_column_letter
     for ci, col in enumerate(colunas, start=1):
         ws.column_dimensions[get_column_letter(ci)].width = larguras.get(col, 14)
     ws.row_dimensions[1].height = 20
@@ -763,7 +763,7 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
                 if ci in (2, 3, 4):
                     c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
             ri2 += 1
-    # ← CORRIGIDO: get_column_letter em vez de .column_letter
+    # ← CORRIGIDO: get_column_letter
     for ci in range(1, 6):
         ws2.column_dimensions[get_column_letter(ci)].width = 22
     ws2.freeze_panes = "A3"
@@ -910,80 +910,77 @@ def gerar_registro_0110(det, importacao: bool = False,
     pc = extrair_pis_cofins(det, aliq_pis_pad, aliq_cof_pad)
     ct = pc["class_trib"]
     vinculo_credito = "08" if importacao else ""
-    # ← 68 campos exatos + DATA_CADASTRO_FIXO no campo 2
-    campos = [
-        "0110",              # 1
-        DATA_CADASTRO_FIXO,  # 2  ← era "Inicial"
-        pc["cst_e"],         # 3
-        vinculo_credito,     # 4
-        "01",                # 5
-        "N",                 # 6
-        "N",                 # 7
-        pc["aliq_pis_e"],    # 8
-        pc["aliq_cof_e"],    # 9
-        "N",                 # 10
-        "N",                 # 11
-        "",                  # 12
-        "",                  # 13
-        "",                  # 14
-        "",                  # 15
-        pc["cst_s"],         # 16
-        "N",                 # 17
-        "",                  # 18
-        "",                  # 19
-        "",                  # 20
-        "N",                 # 21
-        pc["aliq_pis_s"],    # 22
-        pc["aliq_cof_s"],    # 23
-        "N",                 # 24
-        "N",                 # 25
-        "",                  # 26
-        "",                  # 27
-        "",                  # 28
-        "",                  # 29
-        "",                  # 30
-        "",                  # 31
-        "N",                 # 32
-        "N",                 # 33
-        "",                  # 34
-        "",                  # 35
-        "",                  # 36
-        "",                  # 37
-        "",                  # 38
-        "M",                 # 39
-        "",                  # 40
-        "N",                 # 41
-        "N",                 # 42
-        "N",                 # 43
-        "",                  # 44
-        "N",                 # 45
-        "",                  # 46
-        "N",                 # 47
-        "",                  # 48
-        "",                  # 49
-        "",                  # 50
-        "",                  # 51
-        "",                  # 52
-        "",                  # 53
-        "N",                 # 54
-        "",                  # 55
-        "",                  # 56
-        "N",                 # 57
-        "",                  # 58
-        "",                  # 59
-        "N",                 # 60
-        "",                  # 61
-        "N",                 # 62
-        "N",                 # 63
-        "N",                 # 64
-        ct,                  # 65
-        ct,                  # 66
-        "N",                 # 67
-        "N",                 # 68
-    ]
-    while len(campos) < 68:
-        campos.append("")
-    return pipe_join(campos[:68])
+    # ← CORRIGIDO: DATA_CADASTRO_FIXO no campo 2 + 68 campos exatos
+    campos = [""] * 68
+    campos[0]  = "0110"
+    campos[1]  = DATA_CADASTRO_FIXO   # era "Inicial"
+    campos[2]  = pc["cst_e"]
+    campos[3]  = vinculo_credito
+    campos[4]  = "01"
+    campos[5]  = "N"
+    campos[6]  = "N"
+    campos[7]  = pc["aliq_pis_e"]
+    campos[8]  = pc["aliq_cof_e"]
+    campos[9]  = "N"
+    campos[10] = "N"
+    campos[11] = ""
+    campos[12] = ""
+    campos[13] = ""
+    campos[14] = ""
+    campos[15] = pc["cst_s"]
+    campos[16] = "N"
+    campos[17] = ""
+    campos[18] = ""
+    campos[19] = ""
+    campos[20] = "N"
+    campos[21] = pc["aliq_pis_s"]
+    campos[22] = pc["aliq_cof_s"]
+    campos[23] = "N"
+    campos[24] = "N"
+    campos[25] = ""
+    campos[26] = ""
+    campos[27] = ""
+    campos[28] = ""
+    campos[29] = ""
+    campos[30] = ""
+    campos[31] = "N"
+    campos[32] = "N"
+    campos[33] = ""
+    campos[34] = ""
+    campos[35] = ""
+    campos[36] = ""
+    campos[37] = ""
+    campos[38] = "M"
+    campos[39] = ""
+    campos[40] = "N"
+    campos[41] = "N"
+    campos[42] = "N"
+    campos[43] = ""
+    campos[44] = "N"
+    campos[45] = ""
+    campos[46] = "N"
+    campos[47] = ""
+    campos[48] = ""
+    campos[49] = ""
+    campos[50] = ""
+    campos[51] = ""
+    campos[52] = ""
+    campos[53] = "N"
+    campos[54] = ""
+    campos[55] = ""
+    campos[56] = "N"
+    campos[57] = ""
+    campos[58] = ""
+    campos[59] = "N"
+    campos[60] = ""
+    campos[61] = "N"
+    campos[62] = "N"
+    campos[63] = "N"
+    campos[64] = ct
+    campos[65] = ct
+    campos[66] = "N"
+    campos[67] = "N"
+    return pipe_join(campos)
 
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
@@ -1033,19 +1030,106 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
     tipo_doc_importacao = "1" if importacao else ""
-    campos = [
-        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "", nNF, serie, "",   # 1-10
-        dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, emitente_nf, "", "", "",         # 11-20
-        "", "", "", "", "", v_frete, v_seg, v_outro, v_pis, "", v_cofins, "", "", "",   # 21-34
-        "", "", "", "", v_prod, c_mun_fg, "0", "", "", ie_forn, "", "", "", "", "",     # 35-49
-        "", "", n_di, "N", chave, "", "", "", "", "", "",  # 50-61 ← campo 61 vazio (era "1")
-        "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "", "", "", "", "", "", # 62-77
-        "", "", "", "", "", "", "", v_ipi, v_st, "", "", "", "", "", v_icms_d, "",      # 78-94
-    ]
-    if len(campos) < 98:
-        campos.extend([""] * (98 - len(campos)))
-    elif len(campos) > 98:
-        campos = campos[:98]
+    # ← CORRIGIDO: campo 61 vazio (era "1" — tipo serviço inválido)
+    campos = [""] * 98
+    campos[0]  = "1000"
+    campos[1]  = especie
+    campos[2]  = cnpj_forn
+    campos[3]  = ""
+    campos[4]  = acumulador
+    campos[5]  = cfop_first
+    campos[6]  = ""
+    campos[7]  = nNF
+    campos[8]  = serie
+    campos[9]  = ""
+    campos[10] = dhEmi
+    campos[11] = dhEmi
+    campos[12] = v_nf
+    campos[13] = ""
+    campos[14] = obs_fisco
+    campos[15] = mod_frete
+    campos[16] = emitente_nf
+    campos[17] = ""
+    campos[18] = ""
+    campos[19] = ""
+    campos[20] = ""
+    campos[21] = ""
+    campos[22] = ""
+    campos[23] = ""
+    campos[24] = ""
+    campos[25] = v_frete
+    campos[26] = v_seg
+    campos[27] = v_outro
+    campos[28] = v_pis
+    campos[29] = ""
+    campos[30] = v_cofins
+    campos[31] = ""
+    campos[32] = ""
+    campos[33] = ""
+    campos[34] = ""
+    campos[35] = ""
+    campos[36] = ""
+    campos[37] = ""
+    campos[38] = v_prod
+    campos[39] = c_mun_fg
+    campos[40] = "0"
+    campos[41] = ""
+    campos[42] = ""
+    campos[43] = ie_forn
+    campos[44] = ""
+    campos[45] = ""
+    campos[46] = ""
+    campos[47] = ""
+    campos[48] = ""
+    campos[49] = ""
+    campos[50] = ""
+    campos[51] = n_di
+    campos[52] = "N"
+    campos[53] = chave
+    campos[54] = ""
+    campos[55] = ""
+    campos[56] = ""
+    campos[57] = ""
+    campos[58] = ""
+    campos[59] = ""   # ← campo 60: vazio (era "1" — tipo serviço)
+    campos[60] = ""
+    campos[61] = ""
+    campos[62] = tipo_doc_importacao
+    campos[63] = ""
+    campos[64] = ""
+    campos[65] = ""
+    campos[66] = ""
+    campos[67] = ""
+    campos[68] = ""
+    campos[69] = ""
+    campos[70] = ""
+    campos[71] = ""
+    campos[72] = ""
+    campos[73] = ""
+    campos[74] = ""
+    campos[75] = ""
+    campos[76] = ""
+    campos[77] = ""
+    campos[78] = ""
+    campos[79] = ""
+    campos[80] = ""
+    campos[81] = ""
+    campos[82] = ""
+    campos[83] = ""
+    campos[84] = ""
+    campos[85] = v_ipi
+    campos[86] = v_st
+    campos[87] = ""
+    campos[88] = ""
+    campos[89] = ""
+    campos[90] = ""
+    campos[91] = ""
+    campos[92] = v_icms_d
+    campos[93] = ""
+    campos[94] = ""
+    campos[95] = ""
+    campos[96] = ""
+    campos[97] = ""
     return pipe_join(campos)
 
 def gerar_registros_1010(nfe_root) -> list:
@@ -1273,9 +1357,9 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     unidade  = get_text(prod, "nfe:uCom")
     v_unit   = get_text(prod, "nfe:vUnCom")
     cest     = get_text(prod, "nfe:CEST")
-    di_node = prod.find("nfe:DI", NS)
-    n_di    = somente_numeros(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
-    d_di    = fmt_date(get_text(di_node, "nfe:dDI"))        if di_node is not None else ""
+    di_node  = prod.find("nfe:DI", NS)
+    n_di     = somente_numeros(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
+    d_di     = fmt_date(get_text(di_node, "nfe:dDI"))        if di_node is not None else ""
     icms_node  = None
     v_bc_icms  = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
     v_ipi = aliq_ipi = cst_ipi = ""
@@ -1283,7 +1367,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     v_cof = aliq_cof = cst_cof_xml = bc_cof = ""
     ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
     cbs_class_trib = cbs_bc = cbs_aliq = cbs_val = ""
-
     if imposto is not None:
         for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40",
                    "ICMS51","ICMS60","ICMS70","ICMS90","ICMSSN101",
@@ -1346,12 +1429,10 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                 if gcbs is not None:
                     cbs_aliq = fmt_decimal(get_text(gcbs, "nfe:pCBS"))
                     cbs_val  = fmt_decimal(get_text(gcbs, "nfe:vCBS"))
-
-    aliq_pis_f  = safe_float(aliq_pis.replace(",", "."))
-    aliq_cof_f  = safe_float(aliq_cof.replace(",", "."))
-    cst_pis_ef  = cst_pis_efetivo(cst_pis_xml, aliq_pis_f, aliq_pis_pad)
-    cst_cof_ef  = cst_cof_efetivo(cst_cof_xml, aliq_cof_f, aliq_cof_pad)
-
+    aliq_pis_f = safe_float(aliq_pis.replace(",", "."))
+    aliq_cof_f = safe_float(aliq_cof.replace(",", "."))
+    cst_pis_ef = cst_pis_efetivo(cst_pis_xml, aliq_pis_f, aliq_pis_pad)
+    cst_cof_ef = cst_cof_efetivo(cst_cof_xml, aliq_cof_f, aliq_cof_pad)
     try:
         vp = float(v_prod or "0")
         vi = float(get_text(
@@ -1360,28 +1441,122 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
         v_total = fmt_decimal(str(vp + vi))
     except (ValueError, TypeError):
         v_total = fmt_decimal(v_prod)
-
     vinculo_pis = "08" if importacao else ""
     vinculo_cof = "08" if importacao else ""
 
-    campos = [
-        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod), "1",
-        d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
-        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "", fmt_decimal(v_outro),
-        "", v_icms, "", "", "", "", fmt_decimal(v_unit, 6), "", cst_ipi, aliq_ipi,
-        "", "", "", cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
-        fmt_decimal(v_prod), cst_pis_ef, bc_pis, cst_cof_ef, bc_cof,
-        "", "", "", "", "", "", "", "", "", "", "S", unidade, "", "",
-        fmt_decimal(v_prod), "", "", "", "", "", "", "", "", "", "",
-        vinculo_pis, vinculo_cof, "", "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", cest, "", "", "", "", "", v_icms_des, "", "", "",
-        "", "", "", ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
-        cbs_class_trib, cbs_bc, cbs_aliq, cbs_val,
-    ]
-    if len(campos) < 111:
-        campos.extend([""] * (111 - len(campos)))
-    else:
-        campos = campos[:111]
+    # ← CORRIGIDO: índices explícitos — impossível deslocar campos
+    campos = [""] * 111
+    campos[0]   = "1030"
+    campos[1]   = cod_prod
+    campos[2]   = qtd
+    campos[3]   = v_total
+    campos[4]   = v_ipi
+    campos[5]   = fmt_decimal(v_prod)
+    campos[6]   = "1"
+    campos[7]   = d_di
+    campos[8]   = n_di
+    campos[9]   = cst_icms
+    campos[10]  = fmt_decimal(v_prod)
+    campos[11]  = fmt_decimal(v_desc)
+    campos[12]  = v_bc_icms
+    campos[13]  = v_bc_st
+    campos[14]  = aliq_icms
+    campos[15]  = ""
+    campos[16]  = ""
+    campos[17]  = ""
+    campos[18]  = ""
+    campos[19]  = fmt_decimal(v_outro)
+    campos[20]  = ""
+    campos[21]  = v_icms
+    campos[22]  = ""
+    campos[23]  = ""
+    campos[24]  = ""
+    campos[25]  = ""
+    campos[26]  = fmt_decimal(v_unit, 6)
+    campos[27]  = ""
+    campos[28]  = cst_ipi
+    campos[29]  = aliq_ipi
+    campos[30]  = ""
+    campos[31]  = ""
+    campos[32]  = ""
+    campos[33]  = cfop
+    campos[34]  = ""
+    campos[35]  = aliq_pis
+    campos[36]  = v_pis
+    campos[37]  = aliq_cof
+    campos[38]  = v_cof
+    campos[39]  = fmt_decimal(v_prod)
+    campos[40]  = cst_pis_ef
+    campos[41]  = bc_pis
+    campos[42]  = cst_cof_ef
+    campos[43]  = bc_cof
+    campos[44]  = ""
+    campos[45]  = ""
+    campos[46]  = ""
+    campos[47]  = ""
+    campos[48]  = ""
+    campos[49]  = ""
+    campos[50]  = ""
+    campos[51]  = ""
+    campos[52]  = ""
+    campos[53]  = ""
+    campos[54]  = ""
+    campos[55]  = "S"       # campo 56 — Movimentação física
+    campos[56]  = unidade   # campo 57 — Unidade
+    campos[57]  = ""
+    campos[58]  = ""
+    campos[59]  = fmt_decimal(v_prod)
+    campos[60]  = ""
+    campos[61]  = ""
+    campos[62]  = ""
+    campos[63]  = ""
+    campos[64]  = ""
+    campos[65]  = ""
+    campos[66]  = ""
+    campos[67]  = ""
+    campos[68]  = ""
+    campos[69]  = ""
+    campos[70]  = ""
+    campos[71]  = vinculo_pis
+    campos[72]  = vinculo_cof
+    campos[73]  = ""
+    campos[74]  = ""
+    campos[75]  = ""
+    campos[76]  = ""
+    campos[77]  = ""
+    campos[78]  = ""
+    campos[79]  = ""
+    campos[80]  = ""
+    campos[81]  = ""
+    campos[82]  = ""
+    campos[83]  = ""
+    campos[84]  = ""
+    campos[85]  = ""
+    campos[86]  = ""
+    campos[87]  = ""
+    campos[88]  = ""
+    campos[89]  = ""
+    campos[90]  = cest
+    campos[91]  = ""
+    campos[92]  = ""
+    campos[93]  = ""
+    campos[94]  = ""
+    campos[95]  = ""
+    campos[96]  = v_icms_des
+    campos[97]  = ""
+    campos[98]  = ""
+    campos[99]  = ""
+    campos[100] = ""
+    campos[101] = ""
+    campos[102] = ""
+    campos[103] = ibs_class_trib
+    campos[104] = ibs_bc
+    campos[105] = ibs_aliq
+    campos[106] = ibs_val
+    campos[107] = cbs_class_trib
+    campos[108] = cbs_bc
+    campos[109] = cbs_aliq
+    campos[110] = cbs_val
     return pipe_join(campos)
 
 def gerar_registro_1097(nfe_root) -> str:
@@ -1448,19 +1623,14 @@ def converter_xml(
         root = ET.fromstring(xml_content)
     except ET.ParseError as e:
         return "", {"erro": str(e)}, []
-
     nfe = root.find("nfe:NFe", NS)
     if nfe is None:
         nfe = root
-
     importacao = is_nota_importacao(nfe)
     cnpj_empresa, origem_cnpj = extrair_cnpj_empresa(nfe, cnpj_fallback)
-
     if not cnpj_empresa:
         return "", {"erro": "CNPJ nao encontrado. Para importacao, informe o CNPJ Fallback."}, []
-
     aliq_pis_pad, aliq_cof_pad = calcular_aliquotas_padrao_nota(nfe)
-
     lines     = []
     resumo    = {}
     det_list  = nfe.findall("nfe:infNFe/nfe:det", NS)
@@ -1468,7 +1638,6 @@ def converter_xml(
     dest_node = nfe.find("nfe:infNFe/nfe:dest", NS)
     ide       = nfe.find("nfe:infNFe/nfe:ide", NS)
     total     = nfe.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
-
     if importacao and dest_node is not None:
         nome_forn = get_text(dest_node, "nfe:xNome")
         uf_forn   = "EX"
@@ -1483,7 +1652,6 @@ def converter_xml(
         if emit is not None:
             ender_e = emit.find("nfe:enderEmit", NS)
             uf_forn = get_text(ender_e, "nfe:UF") if ender_e is not None else ""
-
     chave_resumo = extrair_chave_nfe(nfe)
     resumo["nNF"]            = get_text(ide, "nfe:nNF")
     resumo["Emitente"]       = get_text(emit, "nfe:xNome") if emit is not None else ""
@@ -1510,7 +1678,6 @@ def converter_xml(
         f"{grupo_padrao} - {TABELA_GRUPOS.get(grupo_padrao,'GERAL')}"
         if grupo_padrao > 0 else "Auto (CFOP/NCM)"
     )
-
     if incluir_0000:
         lines.append(gerar_registro_0000(cnpj_empresa))
     if incluir_0020 and emit is not None:
@@ -1528,31 +1695,25 @@ def converter_xml(
                         aliq_cof_pad=aliq_cof_pad,
                     ))
                 produtos_gerados.add(cod)
-
     lines.append(gerar_registro_1000(nfe, cnpj_empresa, acumulador, especie, importacao))
-
     if incluir_1010:
         for r in gerar_registros_1010(nfe):
             lines.append(r)
     if incluir_1015:
         for r in gerar_registros_1015(nfe):
             lines.append(r)
-
     for r in gerar_registros_1020(nfe, importacao):
         lines.append(r)
-
     for seq, det in enumerate(det_list, start=1):
         lines.append(gerar_registro_1030(
             det, seq, importacao=importacao,
             aliq_pis_pad=aliq_pis_pad,
             aliq_cof_pad=aliq_cof_pad,
         ))
-
     if incluir_1097:
         r1097 = gerar_registro_1097(nfe)
         if r1097:
             lines.append(r1097)
-
     ibs_gerados = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1583,7 +1744,6 @@ def converter_xml(
                 ibs_gerados[ct]["v_cbs"]   += float(get_text(gcbs, "nfe:vCBS") or "0")
                 ibs_gerados[ct]["aliq_cbs"] = get_text(gcbs, "nfe:pCBS")
             except ValueError: pass
-
     for ct, d in ibs_gerados.items():
         lines.append(gerar_registro_1150(
             ct, fmt_decimal(str(d["bc_ibs"])),
@@ -1591,7 +1751,6 @@ def converter_xml(
         lines.append(gerar_registro_1151(
             ct, fmt_decimal(str(d["bc_cbs"])),
             fmt_decimal(d["aliq_cbs"]), fmt_decimal(str(d["v_cbs"]))))
-
     return "\n".join(lines), resumo, (aliq_pis_pad, aliq_cof_pad)
 
 # ─────────────────────────────────────────────
@@ -1636,15 +1795,14 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V4.6-FINAL — Leiaute + Maiúsculas + Excel</h4>
+        <h4>V4.6-FINAL — Correções leiaute + Maiúsculas + Excel</h4>
         <ul>
-          <li><b>Excel</b>: corrigido AttributeError <code>column_letter</code> → <code>get_column_letter(ci)</code>.</li>
-          <li><b>0020 razão/fantasia</b>: convertido para MAIÚSCULO.</li>
-          <li><b>0100 descrição</b>: convertida para MAIÚSCULO.</li>
-          <li><b>0100 campo 4</b>: data de cadastro fixada em <code>01/01/2020</code>.</li>
-          <li><b>0110 campo 2</b>: data de vigência fixada em <code>01/01/2020</code> (era "Inicial").</li>
-          <li><b>0110</b>: ajustado para exatamente <b>68 campos</b>.</li>
-          <li><b>1000 campo 61</b>: tipo de serviço corrigido para vazio (era "1").</li>
+          <li><b>Excel</b>: corrigido AttributeError — <code>get_column_letter(ci)</code>.</li>
+          <li><b>0020</b>: razão social e fantasia convertidas para MAIÚSCULO.</li>
+          <li><b>0100</b>: descrição MAIÚSCULO + data cadastro <code>01/01/2020</code>.</li>
+          <li><b>0110</b>: data vigência <code>01/01/2020</code> (era "Inicial") + <b>68 campos</b> exatos via índices explícitos.</li>
+          <li><b>1000</b>: tipo de serviço (campo 60) corrigido para vazio.</li>
+          <li><b>1030</b>: <b>111 campos via índices explícitos</b> — campo 56 = "S", campo 57 = unidade, sem risco de deslocamento.</li>
         </ul>
         <h4>V4.5-FINAL — CST 73 (Redução Linear)</h4>
         <h4>V4.4-FINAL — Alíquotas PIS/COFINS exatas por item + Relatório Excel</h4>
@@ -1655,9 +1813,6 @@ with st.expander("Instrucoes / Historico de versoes", expanded=False):
 
 st.markdown("---")
 
-# ─────────────────────────────────────────────
-# UPLOAD E PROCESSAMENTO
-# ─────────────────────────────────────────────
 st.markdown("#### 📂 Upload de arquivos")
 st.caption("Aceita **XML** individuais ou pasta compactada em **ZIP** "
            "(somente XMLs com CFOP de importação serão processados).")
@@ -1671,7 +1826,6 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     arquivos_para_processar = []
     relatorio_zip           = []
-
     for f in uploaded_files:
         nome_lower = f.name.lower()
         if nome_lower.endswith(".zip"):
@@ -1685,7 +1839,6 @@ if uploaded_files:
                 arquivos_para_processar.append(item)
         elif nome_lower.endswith(".xml"):
             arquivos_para_processar.append({"nome": f.name, "bytes": f.read()})
-
     if relatorio_zip:
         st.markdown("#### 🗜️ Relatório de triagem dos ZIPs")
         for rz in relatorio_zip:
@@ -1704,17 +1857,14 @@ if uploaded_files:
                 with st.expander(f"Erros de parse ({len(rz['erros'])})"):
                     for n in rz["erros"]:
                         st.caption(f"❌ {n}")
-
     if not arquivos_para_processar:
         st.warning("Nenhum XML de importação encontrado para processar.")
         st.stop()
-
     all_lines      = []
     all_resumos    = []
     all_dados_xls  = []
     erros          = []
     progress       = st.progress(0, text="Processando arquivos...")
-
     for i, arq in enumerate(arquivos_para_processar):
         try:
             root_xls = ET.fromstring(arq["bytes"])
@@ -1725,7 +1875,6 @@ if uploaded_files:
             all_dados_xls.extend(dados_itens)
         except Exception:
             pass
-
         texto, resumo, _ = converter_xml(
             arq["bytes"],
             cnpj_fallback  = cnpj_fallback,
@@ -1749,16 +1898,12 @@ if uploaded_files:
             (i + 1) / len(arquivos_para_processar),
             text=f"Processando {arq['nome']}..."
         )
-
     progress.empty()
-
     if erros:
         st.error("Erros encontrados:")
         st.dataframe(erros, use_container_width=True)
-
     if all_resumos:
         st.success(f"{len(all_resumos)} arquivo(s) convertido(s) com sucesso!")
-
         cnpjs_unicos = list({r["CNPJ Empresa"]: r for r in all_resumos}.values())
         if cnpjs_unicos:
             st.markdown("#### Empresa / Fornecedor")
@@ -1780,19 +1925,14 @@ if uploaded_files:
                         f'</div>',
                         unsafe_allow_html=True,
                     )
-
         st.markdown("---")
         with st.expander("Resumo das notas processadas", expanded=True):
             st.dataframe(all_resumos, use_container_width=True)
-
         saida_final = "\n".join(all_lines)
-
         with st.expander("Preview do arquivo gerado (primeiras 80 linhas)"):
             st.code("\n".join(saida_final.split("\n")[:80]), language="text")
-
         st.markdown("---")
         saida_ansi = encode_ansi(saida_final)
-
         col1, col2 = st.columns(2)
         with col1:
             st.download_button(
@@ -1815,7 +1955,6 @@ if uploaded_files:
                 )
             elif not EXCEL_DISPONIVEL:
                 st.warning("openpyxl não instalado. Execute: pip install openpyxl")
-
         st.markdown("---")
         st.markdown("#### Estatísticas")
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -1831,7 +1970,6 @@ if uploaded_files:
                       f"{total_nf:,.2f}".replace(",","X").replace(".",",").replace("X","."))
         except Exception:
             c5.metric("Total NF", "-")
-
 else:
     st.info("Faca o upload de um ou mais arquivos XML ou de um arquivo ZIP contendo XMLs de NF-e.")
 
