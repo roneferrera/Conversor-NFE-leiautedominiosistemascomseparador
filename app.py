@@ -2,8 +2,10 @@ import streamlit as st
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
+import zipfile
+import io
 
-VERSAO = "V4.1-FINAL"
+VERSAO = "V4.2-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -23,6 +25,8 @@ def apply_tr_theme():
         .instrucoes-box h4:first-child { margin-top: 0; }
         .cnpj-badge { background-color: #444444; border: 1px solid #FF8000; border-radius: 4px; padding: 6px 12px; font-family: Consolas, monospace; font-size: 13px; display: inline-block; margin: 4px 0; }
         .info-origem { background-color: #FFF3E0; border-left: 3px solid #FF8000; border-radius: 3px; padding: 8px 12px; font-size: 12px; color: #444444; margin: 6px 0; }
+        .zip-info { background-color: #E3F2FD; border-left: 4px solid #1565C0; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: #1565C0; }
+        .zip-warn { background-color: #FFF8E1; border-left: 4px solid #F9A825; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: #795548; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -36,7 +40,7 @@ st.markdown(f"""
         </h2>
         <p style="color:#DDDDDD; margin:6px 0 0 0; font-family:'Segoe UI',Arial,sans-serif;">
             Converte XML de NF-e para leiaute padrao de importacao do <strong>Dominio Sistemas</strong>.
-            Saida em <strong>ANSI (Latin-1)</strong>.
+            Saida em <strong>ANSI (Latin-1)</strong>. Aceita arquivos <strong>XML</strong> ou <strong>ZIP</strong>.
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -57,8 +61,7 @@ CST_ENTRADA_SAIDA = {
     "73": "06", "74": "08", "70": "04", "99": "49",
 }
 
-# CSTs de IPI consideradas "isentas" — quando o CST for um desses,
-# NÃO joga para outras (mesmo com IPI zerado)
+# CSTs de IPI isentas — quando CST for um desses com IPI=0, NÃO vai para outras
 CST_IPI_ISENTAS = {"02", "03", "04", "05"}
 
 PAISES_BACEN_PARA_DOMINIO = {
@@ -269,6 +272,63 @@ def safe_float(v: str) -> float:
         return 0.0
 
 # ─────────────────────────────────────────────
+# EXTRAÇÃO DE XMLs DE IMPORTAÇÃO DO ZIP
+# ─────────────────────────────────────────────
+def extrair_xmls_importacao_do_zip(zip_bytes: bytes) -> tuple:
+    """
+    Abre um arquivo ZIP e retorna apenas os XMLs cujo primeiro CFOP
+    começa com '3' (nota de importação).
+
+    Retorna:
+        xmls_importacao : list[dict]  → [{"nome": str, "bytes": bytes}, ...]
+        total_xml       : int         → total de XMLs encontrados no ZIP
+        ignorados       : list[str]   → nomes dos XMLs ignorados (CFOP ≠ 3xxx)
+        erros_parse     : list[str]   → nomes dos XMLs que falharam no parse
+    """
+    xmls_importacao = []
+    ignorados       = []
+    erros_parse     = []
+    total_xml       = 0
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for entry in zf.infolist():
+                nome = entry.filename
+                # ignora diretórios e arquivos que não sejam .xml
+                if entry.is_dir():
+                    continue
+                if not nome.lower().endswith(".xml"):
+                    continue
+
+                total_xml += 1
+                xml_bytes = zf.read(nome)
+
+                try:
+                    root = ET.fromstring(xml_bytes)
+                    nfe  = root.find("nfe:NFe", NS) or root
+                    det_list = nfe.findall("nfe:infNFe/nfe:det", NS)
+                    cfop = ""
+                    if det_list:
+                        cfop = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
+
+                    # Filtra: apenas CFOPs iniciados com "3"
+                    if cfop.startswith("3"):
+                        xmls_importacao.append({
+                            "nome":  nome.split("/")[-1],   # só o nome do arquivo
+                            "bytes": xml_bytes,
+                        })
+                    else:
+                        ignorados.append(f"{nome.split('/')[-1]} (CFOP {cfop or 'N/A'})")
+
+                except ET.ParseError:
+                    erros_parse.append(nome.split("/")[-1])
+
+    except zipfile.BadZipFile:
+        return [], 0, [], ["Arquivo ZIP inválido ou corrompido."]
+
+    return xmls_importacao, total_xml, ignorados, erros_parse
+
+# ─────────────────────────────────────────────
 # DETECÇÃO DE GRUPO
 # ─────────────────────────────────────────────
 def get_grupo_por_cfop(cfop: str) -> int:
@@ -340,16 +400,9 @@ def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str) -> tuple:
     return "", "Nao encontrado"
 
 # ─────────────────────────────────────────────
-# HELPER: detecta se a nota tem IPI zerado com
-# CST diferente de isentas em TODOS os itens
+# HELPER: IPI zero com CST não-isenta
 # ─────────────────────────────────────────────
 def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
-    """
-    Retorna True se a nota tiver pelo menos um item com:
-      - IPI presente (IPITrib) com valor = 0
-      - CST do IPI NÃO pertence ao conjunto de isentas (02,03,04,05)
-    Usado para decidir se joga vProd para 'outras' no 1020 ICMS.
-    """
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -357,7 +410,7 @@ def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
             continue
         ipi_trib = imp.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
-            cst = get_text(ipi_trib, "nfe:CST").strip().zfill(2)
+            cst   = get_text(ipi_trib, "nfe:CST").strip().zfill(2)
             v_ipi = safe_float(get_text(ipi_trib, "nfe:vIPI"))
             if v_ipi == 0 and cst not in CST_IPI_ISENTAS:
                 return True
@@ -501,84 +554,19 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
 
 # ─────────────────────────────────────────────
 # REGISTRO 0110 – 70 campos
-# V4.1: importacao=True → campo 4 (Vínculo de Crédito) = "08"
+# V4.1: importacao=True → campo 4 = "08"
 # ─────────────────────────────────────────────
 def gerar_registro_0110(det, importacao: bool = False) -> str:
     pc = extrair_pis_cofins(det)
     ct = pc["class_trib"]
-    # Campo 4 = Vínculo do Crédito: 08 = Crédito de importação
     vinculo_credito = "08" if importacao else ""
     return pipe_join([
-        "0110",              # 1
-        "Inicial",           # 2
-        pc["cst_e"],         # 3
-        vinculo_credito,     # 4  ← 08 quando importação
-        "01",                # 5
-        "N",                 # 6
-        "N",                 # 7
-        pc["aliq_pis_e"],    # 8
-        pc["aliq_cof_e"],    # 9
-        "N",                 # 10
-        "N",                 # 11
-        "",                  # 12
-        "",                  # 13
-        "",                  # 14
-        "",                  # 15
-        pc["cst_s"],         # 16
-        "N",                 # 17
-        "",                  # 18
-        "",                  # 19
-        "",                  # 20
-        "N",                 # 21
-        pc["aliq_pis_s"],    # 22
-        pc["aliq_cof_s"],    # 23
-        "N",                 # 24
-        "N",                 # 25
-        "",                  # 26
-        "",                  # 27
-        "",                  # 28
-        "",                  # 29
-        "",                  # 30
-        "",                  # 31
-        "N",                 # 32
-        "N",                 # 33
-        "",                  # 34
-        "",                  # 35
-        "",                  # 36
-        "",                  # 37
-        "",                  # 38
-        "M",                 # 39 (IPI periodicidade)
-        "",                  # 40
-        "N",                 # 41
-        "N",                 # 42
-        "N",                 # 43
-        "",                  # 44
-        "N",                 # 45
-        "",                  # 46
-        "N",                 # 47
-        "",                  # 48
-        "",                  # 49
-        "",                  # 50
-        "",                  # 51
-        "",                  # 52
-        "",                  # 53
-        "",                  # 54
-        "N",                 # 55
-        "",                  # 56
-        "",                  # 57
-        "N",                 # 58
-        "",                  # 59
-        "",                  # 60
-        "N",                 # 61
-        "",                  # 62
-        "N",                 # 63
-        "N",                 # 64
-        "N",                 # 65
-        ct,                  # 66 IBS cClassTrib
-        ct,                  # 67 CBS cClassTrib
-        "N",                 # 68
-        "N",                 # 69
-        "",                  # 70
+        "0110", "Inicial", pc["cst_e"], vinculo_credito, "01", "N", "N",
+        pc["aliq_pis_e"], pc["aliq_cof_e"], "N", "N", "", "", "", "",
+        pc["cst_s"], "N", "", "", "", "N", pc["aliq_pis_s"], pc["aliq_cof_s"],
+        "N", "N", "", "", "", "", "", "", "N", "N", "", "", "", "", "", "M",
+        "", "N", "N", "N", "", "N", "", "N", "", "", "", "", "", "", "N",
+        "", "", "N", "", "", "N", "", "N", "N", "N", ct, ct, "N", "N",
     ])
 
 # ─────────────────────────────────────────────
@@ -644,104 +632,13 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     tipo_doc_importacao = "1" if importacao else ""
 
     campos = [
-        "1000",               # 1
-        especie,              # 2
-        cnpj_forn,            # 3
-        "",                   # 4
-        acumulador,           # 5
-        cfop_first,           # 6
-        "",                   # 7
-        nNF,                  # 8
-        serie,                # 9
-        "",                   # 10
-        dhEmi,                # 11
-        dhEmi,                # 12
-        v_nf,                 # 13
-        "",                   # 14
-        obs_fisco,            # 15
-        mod_frete,            # 16
-        emitente_nf,          # 17
-        "",                   # 18
-        "",                   # 19
-        "",                   # 20
-        "",                   # 21
-        "",                   # 22
-        "",                   # 23
-        "",                   # 24
-        "",                   # 25
-        v_frete,              # 26
-        v_seg,                # 27
-        v_outro,              # 28
-        v_pis,                # 29
-        "",                   # 30
-        v_cofins,             # 31
-        "",                   # 32
-        "",                   # 33
-        "",                   # 34
-        "",                   # 35
-        "",                   # 36
-        "",                   # 37
-        "",                   # 38
-        v_prod,               # 39
-        c_mun_fg,             # 40
-        "0",                  # 41
-        "",                   # 42
-        "",                   # 43
-        ie_forn,              # 44
-        "",                   # 45
-        "",                   # 46
-        "",                   # 47
-        "",                   # 48
-        "",                   # 49
-        "",                   # 50
-        "",                   # 51
-        n_di,                 # 52
-        "N",                  # 53
-        chave,                # 54
-        "",                   # 55
-        "",                   # 56
-        "",                   # 57
-        "",                   # 58
-        "",                   # 59
-        "1",                  # 60
-        "",                   # 61
-        "",                   # 62
-        "",                   # 63
-        "",                   # 64
-        "",                   # 65
-        "",                   # 66
-        "",                   # 67
-        "",                   # 68
-        "",                   # 69
-        tipo_doc_importacao,  # 70
-        "",                   # 71
-        "",                   # 72
-        "",                   # 73
-        "",                   # 74
-        "",                   # 75
-        "",                   # 76
-        "",                   # 77
-        "",                   # 78
-        "",                   # 79
-        "",                   # 80
-        "",                   # 81
-        "",                   # 82
-        "",                   # 83
-        "",                   # 84
-        "",                   # 85
-        "",                   # 86
-        "",                   # 87
-        "",                   # 88
-        "",                   # 89
-        v_ipi,                # 90
-        v_st,                 # 91
-        "",                   # 92
-        "",                   # 93
-        "",                   # 94
-        "",                   # 95
-        "",                   # 96
-        v_icms_d,             # 97
-        "",                   # 98
+        "1000", especie, cnpj_forn, "", acumulador, cfop_first, "", nNF, serie, "",
+        dhEmi, dhEmi, v_nf, "", obs_fisco, mod_frete, emitente_nf, "", "", "",
+        "", "", "", "", "", v_frete, v_seg, v_outro, v_pis, "", v_cofins, "", "", "",
+        "", "", "", "", v_prod, c_mun_fg, "0", "", "", ie_forn, "", "", "", "", "",
+        "", "", n_di, "N", chave, "", "", "", "", "", "1", "", "", "", "", "", "", "",
+        "", "", tipo_doc_importacao, "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", v_ipi, v_st, "", "", "", "", "", v_icms_d, "",
     ]
     assert len(campos) == 98, f"1000: esperado 98, gerado {len(campos)}"
     return pipe_join(campos)
@@ -778,9 +675,7 @@ def gerar_registros_1015(nfe_root) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# REGISTROS 1020 – por alíquota
-# V4.0: importacao=True + IPI > 0  → IPI vai para "outras" na linha ICMS
-# V4.1: importacao=True + IPI = 0 + CST ≠ isenta → vProd vai para "outras"
+# REGISTROS 1020
 # ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     total    = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
@@ -796,7 +691,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
             "", "", "", "", "", "", "",
         ])
 
-    # ── ICMS: agrupa por alíquota ─────────────────────────────────────
     icms_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -819,24 +713,20 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                 icms_por_aliq[key]["deson"] += deson
                 break
 
-    v_ipi_tot = fmt_decimal(get_text(total, "nfe:vIPI"))
-    v_st_tot  = fmt_decimal(get_text(total, "nfe:vST"))
+    v_ipi_tot  = fmt_decimal(get_text(total, "nfe:vIPI"))
+    v_st_tot   = fmt_decimal(get_text(total, "nfe:vST"))
     v_prod_tot = fmt_decimal(get_text(total, "nfe:vProd"))
 
-    # ── Lógica do campo "outras" na linha ICMS (importação) ───────────
-    # Regra 1: IPI > 0  → outras = vIPI total
-    # Regra 2: IPI = 0 E CST ≠ isenta → outras = vProd total
-    # Regra 3: nacional ou IPI isento  → outras = ""
     if importacao:
         ipi_float = safe_float(v_ipi_tot)
         if ipi_float > 0:
-            outras_icms = v_ipi_tot          # Regra 1
+            outras_icms = v_ipi_tot
         elif detectar_ipi_zero_nao_isento(nfe_root):
-            outras_icms = v_prod_tot         # Regra 2
+            outras_icms = v_prod_tot
         else:
-            outras_icms = ""                 # isento/NT
+            outras_icms = ""
     else:
-        outras_icms = ""                     # nacional
+        outras_icms = ""
 
     for aliq_str, dados in sorted(icms_por_aliq.items(),
                                    key=lambda x: safe_float(x[0])):
@@ -852,7 +742,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                 v_cont= v_nf,
             ))
 
-    # ── IPI: agrupa por alíquota ──────────────────────────────────────
     ipi_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -898,7 +787,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                 v_cont= v_nf,
             ))
 
-    # ── PIS: agrupa por alíquota ──────────────────────────────────────
     pis_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -930,7 +818,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                 v_cont= v_nf,
             ))
 
-    # ── COFINS: agrupa por alíquota ───────────────────────────────────
     cof_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -962,7 +849,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                 v_cont= v_nf,
             ))
 
-    # ── ICMS Desonerado (cód 45) ──────────────────────────────────────
     for aliq_str, dados in sorted(icms_por_aliq.items(),
                                    key=lambda x: safe_float(x[0])):
         if dados["deson"] > 0:
@@ -974,7 +860,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                 v_cont= v_nf,
             ))
 
-    # ── PIS SPED (133) e COFINS SPED (134) ───────────────────────────
     v_pis_tot    = get_text(total, "nfe:vPIS")
     v_cofins_tot = get_text(total, "nfe:vCOFINS")
     bc_pis_total = bc_cof_total = 0.0
@@ -1014,8 +899,7 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
 
 # ─────────────────────────────────────────────
 # REGISTRO 1030 – 111 campos
-# V4.1: importacao=True → campos 72 e 73
-#       (Vínculo de Crédito PIS / COFINS) = "08"
+# V4.1: importacao=True → campos 72/73 = "08"
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
     prod    = det.find("nfe:prod", NS)
@@ -1117,122 +1001,25 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False) -> str:
     except (ValueError, TypeError):
         v_total = fmt_decimal(v_prod)
 
-    # Vínculo de Crédito PIS/COFINS: 08 = Crédito de importação
-    vinculo_pis  = "08" if importacao else ""
-    vinculo_cof  = "08" if importacao else ""
+    vinculo_pis = "08" if importacao else ""
+    vinculo_cof = "08" if importacao else ""
 
     campos = [
-        "1030",                   # 1
-        cod_prod,                 # 2
-        qtd,                      # 3
-        v_total,                  # 4
-        v_ipi,                    # 5
-        fmt_decimal(v_prod),      # 6
-        "1",                      # 7
-        d_di,                     # 8
-        n_di,                     # 9
-        cst_icms,                 # 10
-        fmt_decimal(v_prod),      # 11
-        fmt_decimal(v_desc),      # 12
-        v_bc_icms,                # 13
-        v_bc_st,                  # 14
-        aliq_icms,                # 15
-        "",                       # 16
-        "",                       # 17
-        "",                       # 18
-        "",                       # 19
-        fmt_decimal(v_outro),     # 20
-        "",                       # 21
-        v_icms,                   # 22
-        "",                       # 23
-        "",                       # 24
-        "",                       # 25
-        "",                       # 26
-        fmt_decimal(v_unit, 6),   # 27
-        "",                       # 28
-        cst_ipi,                  # 29
-        aliq_ipi,                 # 30
-        "",                       # 31
-        "",                       # 32
-        "",                       # 33
-        cfop,                     # 34
-        "",                       # 35
-        aliq_pis,                 # 36
-        v_pis,                    # 37
-        aliq_cof,                 # 38
-        v_cof,                    # 39
-        fmt_decimal(v_prod),      # 40
-        cst_pis,                  # 41
-        bc_pis,                   # 42
-        cst_cof,                  # 43
-        bc_cof,                   # 44
-        "",                       # 45
-        "",                       # 46
-        "",                       # 47
-        "",                       # 48
-        "",                       # 49
-        "",                       # 50
-        "",                       # 51
-        "",                       # 52
-        "",                       # 53
-        "",                       # 54
-        "",                       # 55
-        "S",                      # 56
-        unidade,                  # 57
-        "",                       # 58
-        "",                       # 59
-        fmt_decimal(v_prod),      # 60
-        "",                       # 61
-        "",                       # 62
-        "",                       # 63
-        "",                       # 64
-        "",                       # 65
-        "",                       # 66
-        "",                       # 67
-        "",                       # 68
-        "",                       # 69
-        "",                       # 70
-        "",                       # 71
-        vinculo_pis,              # 72  ← Vínculo de Crédito PIS  (08 = importação)
-        vinculo_cof,              # 73  ← Vínculo de Crédito COFINS (08 = importação)
-        "",                       # 74
-        "",                       # 75
-        "",                       # 76
-        "",                       # 77
-        "",                       # 78
-        "",                       # 79
-        "",                       # 80
-        "",                       # 81
-        "",                       # 82
-        "",                       # 83
-        "",                       # 84
-        "",                       # 85
-        "",                       # 86
-        "",                       # 87
-        "",                       # 88
-        "",                       # 89
-        "",                       # 90
-        cest,                     # 91
-        "",                       # 92
-        "",                       # 93
-        "",                       # 94
-        "",                       # 95
-        "",                       # 96
-        v_icms_des,               # 97
-        "",                       # 98
-        "",                       # 99
-        "",                       # 100
-        "",                       # 101
-        "",                       # 102
-        "",                       # 103
-        ibs_class_trib,           # 104
-        ibs_bc,                   # 105
-        ibs_aliq,                 # 106
-        ibs_val,                  # 107
-        cbs_class_trib,           # 108
-        cbs_bc,                   # 109
-        cbs_aliq,                 # 110
-        cbs_val,                  # 111
+        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod), "1",
+        d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
+        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "", fmt_decimal(v_outro),
+        "", v_icms, "", "", "", "", fmt_decimal(v_unit, 6), "", cst_ipi, aliq_ipi,
+        "", "", "", cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
+        fmt_decimal(v_prod), cst_pis, bc_pis, cst_cof, bc_cof,
+        "", "", "", "", "", "", "", "", "", "", "",
+        "S", unidade, "", "", fmt_decimal(v_prod),
+        "", "", "", "", "", "", "", "", "", "",
+        "", vinculo_pis, vinculo_cof, "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        cest, "", "", "", "", "", v_icms_des, "", "", "",
+        "", "", "",
+        ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
+        cbs_class_trib, cbs_bc, cbs_aliq, cbs_val,
     ]
     if len(campos) != 111:
         if len(campos) < 111:
@@ -1383,7 +1170,6 @@ def converter_xml(
             if cod not in produtos_gerados:
                 lines.append(gerar_registro_0100(det, grupo_padrao=grupo_padrao))
                 if incluir_0110:
-                    # ← passa importacao para gerar campo 4 = 08
                     lines.append(gerar_registro_0110(det, importacao=importacao))
                 produtos_gerados.add(cod)
 
@@ -1400,7 +1186,6 @@ def converter_xml(
         lines.append(r)
 
     for seq, det in enumerate(det_list, start=1):
-        # ← passa importacao para gerar campos 72/73 = 08
         lines.append(gerar_registro_1030(det, seq, importacao=importacao))
 
     if incluir_1097:
@@ -1457,7 +1242,7 @@ def converter_xml(
 # SIDEBAR
 # ─────────────────────────────────────────────
 with st.sidebar:
-    st.markdown(f"### Info")
+    st.markdown("### Info")
     st.markdown(f"**Versao:** {VERSAO}")
     st.markdown("**Thomson Reuters**")
     st.markdown("**Dominio Sistemas**")
@@ -1489,7 +1274,7 @@ with st.sidebar:
         format_func=lambda x: f"{x} - {TABELA_GRUPOS[x]}" if x > 0 else TABELA_GRUPOS[x],
         index=0,
     )
-    st.caption("Auto: CFOP 3102 → Grupo 2" if grupo_selecionado == 0
+    st.caption("Auto: CFOP 3xxx → detectado automaticamente" if grupo_selecionado == 0
                else f"Fixo: {grupo_selecionado} - {TABELA_GRUPOS[grupo_selecionado]}")
     st.markdown("---")
     with st.expander("Tabela de Grupos"):
@@ -1506,22 +1291,22 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V4.2-FINAL — Upload de pasta ZIP com filtro automático de importação</h4>
+        <ul>
+          <li>Aceita arquivos <b>ZIP</b> contendo múltiplos XMLs de NF-e.</li>
+          <li>O sistema extrai automaticamente <b>apenas os XMLs cujo CFOP inicia com "3"</b> (notas de importação).</li>
+          <li>XMLs com outros CFOPs são ignorados e listados no relatório.</li>
+          <li>Também continua aceitando upload direto de arquivos <b>XML</b> individuais.</li>
+          <li>Relatório de triagem: total encontrado, aproveitados, ignorados e erros de parse.</li>
+        </ul>
         <h4>V4.1-FINAL — Vínculo de Crédito 08 + 1020 outras IPI zero</h4>
         <ul>
-          <li><b>0110 campo 4</b>: importação → <code>08</code> (Crédito de importação)</li>
-          <li><b>1030 campos 72 e 73</b>: importação → <code>08</code> (Vínculo de Crédito PIS e COFINS)</li>
-          <li><b>1020 ICMS campo "outras"</b> — 3 regras para importação:
-            <ul>
-              <li>IPI &gt; 0 → <code>outras = vIPI total</code> (regra V4.0)</li>
-              <li>IPI = 0 e CST ≠ isenta (02/03/04/05) → <code>outras = vProd total</code> (regra nova)</li>
-              <li>IPI isento/NT ou nota nacional → <code>outras = ""</code></li>
-            </ul>
-          </li>
+          <li>0110 campo 4: importação → <code>08</code></li>
+          <li>1030 campos 72/73: importação → <code>08</code></li>
+          <li>1020 ICMS campo "outras": IPI=0 e CST ≠ isenta → vProd total</li>
         </ul>
-        <h4>V4.0-FINAL — 1020 ICMS: IPI em "outras" para importação com IPI</h4>
+        <h4>V4.0-FINAL — 1020 ICMS: IPI em "outras" para importação</h4>
         <h4>V3.9-FINAL — Corrigido AssertionError no Registro 1030</h4>
-        <h4>V3.8-FINAL — 1020: uma linha por alíquota (ICMS e IPI)</h4>
-        <h4>V3.7-FINAL — Contagem exata 98 campos no 1000</h4>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1530,22 +1315,82 @@ st.markdown("---")
 # ─────────────────────────────────────────────
 # UPLOAD E PROCESSAMENTO
 # ─────────────────────────────────────────────
+st.markdown("#### 📂 Upload de arquivos")
+st.caption("Aceita arquivos XML individuais **ou** uma pasta compactada em ZIP (somente XMLs com CFOP de importação serão processados).")
+
 uploaded_files = st.file_uploader(
-    "Selecione um ou mais arquivos XML de NF-e",
-    type=["xml"],
+    "Selecione arquivos XML ou um arquivo ZIP",
+    type=["xml", "zip"],
     accept_multiple_files=True,
 )
 
 if uploaded_files:
+    # ── Separar ZIPs de XMLs diretos ─────────────────────────────────
+    arquivos_para_processar = []   # lista de {"nome": str, "bytes": bytes}
+    relatorio_zip           = []   # feedback visual dos ZIPs
+
+    for f in uploaded_files:
+        nome_lower = f.name.lower()
+
+        if nome_lower.endswith(".zip"):
+            zip_bytes = f.read()
+            xmls_imp, total_xml, ignorados, erros_parse = \
+                extrair_xmls_importacao_do_zip(zip_bytes)
+
+            relatorio_zip.append({
+                "zip":        f.name,
+                "total":      total_xml,
+                "importacao": len(xmls_imp),
+                "ignorados":  ignorados,
+                "erros":      erros_parse,
+            })
+            for item in xmls_imp:
+                arquivos_para_processar.append(item)
+
+        elif nome_lower.endswith(".xml"):
+            arquivos_para_processar.append({
+                "nome":  f.name,
+                "bytes": f.read(),
+            })
+
+    # ── Exibir relatório dos ZIPs ─────────────────────────────────────
+    if relatorio_zip:
+        st.markdown("#### 🗜️ Relatório de triagem dos ZIPs")
+        for rz in relatorio_zip:
+            cor_borda = "#1565C0" if rz["importacao"] > 0 else "#F9A825"
+            classe    = "zip-info" if rz["importacao"] > 0 else "zip-warn"
+            st.markdown(
+                f'<div class="{classe}">'
+                f'<b>📦 {rz["zip"]}</b> — '
+                f'{rz["total"]} XML(s) encontrado(s) | '
+                f'<b>{rz["importacao"]} de importação (CFOP 3xxx) aproveitado(s)</b> | '
+                f'{len(rz["ignorados"])} ignorado(s) | '
+                f'{len(rz["erros"])} erro(s) de parse'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if rz["ignorados"]:
+                with st.expander(f"XMLs ignorados de {rz['zip']} ({len(rz['ignorados'])})"):
+                    for nome_ig in rz["ignorados"]:
+                        st.caption(f"⏭️ {nome_ig}")
+            if rz["erros"]:
+                with st.expander(f"Erros de parse em {rz['zip']} ({len(rz['erros'])})"):
+                    for nome_er in rz["erros"]:
+                        st.caption(f"❌ {nome_er}")
+
+    # ── Processar os XMLs selecionados ────────────────────────────────
+    if not arquivos_para_processar:
+        st.warning("Nenhum XML de importação encontrado para processar.")
+        st.stop()
+
     all_lines   = []
     all_resumos = []
     erros       = []
     progress    = st.progress(0, text="Processando arquivos...")
 
-    for i, f in enumerate(uploaded_files):
-        xml_bytes = f.read()
+    for i, arq in enumerate(arquivos_para_processar):
         texto, resumo = converter_xml(
-            xml_bytes,
+            arq["bytes"],
             cnpj_fallback  = cnpj_fallback,
             acumulador     = acumulador,
             especie        = especie,
@@ -1559,11 +1404,14 @@ if uploaded_files:
             grupo_padrao   = grupo_selecionado,
         )
         if "erro" in resumo:
-            erros.append({"Arquivo": f.name, "Erro": resumo["erro"]})
+            erros.append({"Arquivo": arq["nome"], "Erro": resumo["erro"]})
         else:
             all_lines.append(texto)
-            all_resumos.append({"Arquivo": f.name, **resumo})
-        progress.progress((i + 1) / len(uploaded_files), text=f"Processando {f.name}...")
+            all_resumos.append({"Arquivo": arq["nome"], **resumo})
+        progress.progress(
+            (i + 1) / len(arquivos_para_processar),
+            text=f"Processando {arq['nome']}..."
+        )
 
     progress.empty()
 
@@ -1610,7 +1458,7 @@ if uploaded_files:
         col1, col2 = st.columns(2)
         with col1:
             st.download_button(
-                label="Baixar Arquivo Dominio (.TXT ANSI)",
+                label="⬇️ Baixar Arquivo Dominio (.TXT ANSI)",
                 data=saida_ansi,
                 file_name="importacao_dominio.txt",
                 mime="text/plain",
@@ -1619,7 +1467,7 @@ if uploaded_files:
             )
         with col2:
             st.download_button(
-                label="Baixar Arquivo (.TXT UTF-8)",
+                label="⬇️ Baixar Arquivo (.TXT UTF-8)",
                 data=saida_final.encode("utf-8"),
                 file_name="importacao_dominio_utf8.txt",
                 mime="text/plain",
@@ -1627,7 +1475,7 @@ if uploaded_files:
             )
 
         st.markdown("---")
-        st.markdown("#### Estatisticas")
+        st.markdown("#### Estatísticas")
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Notas",   len(all_resumos))
         c2.metric("Itens",   sum(r.get("Itens", 0) for r in all_resumos))
@@ -1643,7 +1491,7 @@ if uploaded_files:
             c5.metric("Total NF", "-")
 
 else:
-    st.info("Faca o upload de um ou mais arquivos XML de NF-e para iniciar.")
+    st.info("Faca o upload de um ou mais arquivos XML ou de um arquivo ZIP contendo XMLs de NF-e.")
 
 st.markdown("---")
 st.caption(f"Conversor XML NF-e → Dominio Sistemas | Thomson Reuters | Python + Streamlit | {VERSAO}")
