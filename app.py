@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 
-VERSAO = "V3.7-FINAL"
+VERSAO = "V3.8-FINAL"
 
 def apply_tr_theme():
     st.markdown("""
@@ -250,7 +250,6 @@ def somente_numeros(valor: str) -> str:
     return re.sub(r"[^0-9]", "", valor or "")
 
 def extrair_chave_nfe(nfe_root) -> str:
-    """Extrai chave de 44 dígitos do atributo Id da infNFe."""
     inf_nfe = nfe_root.find("nfe:infNFe", NS)
     if inf_nfe is None:
         return ""
@@ -258,6 +257,12 @@ def extrair_chave_nfe(nfe_root) -> str:
     chave = re.sub(r"^NFe", "", id_attr)
     chave_num = re.sub(r"[^0-9]", "", chave)
     return chave_num if len(chave_num) == 44 else chave
+
+def safe_float(v: str) -> float:
+    try:
+        return float(str(v).replace(",", ".") or "0")
+    except (ValueError, TypeError):
+        return 0.0
 
 # ─────────────────────────────────────────────
 # DETECÇÃO DE GRUPO
@@ -337,7 +342,7 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
 # ─────────────────────────────────────────────
-# REGISTRO 0020 – 33 campos
+# REGISTRO 0020
 # ─────────────────────────────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
@@ -379,39 +384,9 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         contrib      = "S" if ie and ie.upper() not in ("ISENTO", "NAO CONTRIBUINTE", "") else "N"
 
     return pipe_join([
-        "0020",      # 1
-        inscricao,   # 2
-        razao,       # 3
-        fantasia,    # 4
-        logradouro,  # 5
-        numero,      # 6
-        complemento, # 7
-        bairro,      # 8
-        cod_mun,     # 9
-        uf_campo,    # 10
-        cod_pais,    # 11
-        cep,         # 12
-        ie,          # 13
-        "",          # 14
-        "",          # 15
-        "",          # 16
-        "",          # 17
-        "",          # 18
-        "",          # 19
-        "",          # 20
-        "",          # 21
-        "N",         # 22
-        "7",         # 23
-        regime,      # 24
-        contrib,     # 25
-        "",          # 26
-        "",          # 27
-        "",          # 28
-        "",          # 29
-        "N",         # 30
-        "N",         # 31
-        "",          # 32
-        "",          # 33
+        "0020", inscricao, razao, fantasia, logradouro, numero, complemento,
+        bairro, cod_mun, uf_campo, cod_pais, cep, ie, "", "", "", "", "",
+        "", "", "", "N", "7", regime, contrib, "", "", "", "", "N", "N", "", "",
     ])
 
 # ─────────────────────────────────────────────
@@ -482,98 +457,14 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
             aliq_ipi = fmt_decimal(get_text(ipi_trib, "nfe:pIPI"))
 
     campos = [
-        "0100",                    # 1
-        cod_prod,                  # 2
-        descricao,                 # 3
-        "",                        # 4
-        ncm,                       # 5
-        "",                        # 6  Numérico
-        "",                        # 7
-        "",                        # 8  Numérico
-        cod_grupo,                 # 9
-        unidade,                   # 10
-        "N",                       # 11
-        "O",                       # 12
-        "",                        # 13 Numérico
-        "",                        # 14
-        "",                        # 15 Numérico
-        "N",                       # 16
-        "",                        # 17
-        fmt_decimal(val_unit, 3),  # 18
-        "",                        # 19
-        "",                        # 20
-        cst_icms,                  # 21
-        aliq_icms,                 # 22
-        aliq_ipi,                  # 23
-        "M",                       # 24
-        "",                        # 25
-        "N",                       # 26
-        "",                        # 27
-        "",                        # 28 Numérico
-        "",                        # 29 Numérico
-        "",                        # 30
-        "",                        # 31 Numérico
-        "",                        # 32 Numérico
-        "",                        # 33
-        "",                        # 34 Numérico
-        "N",                       # 35
-        "",                        # 36 Numérico
-        "N",                       # 37
-        "",                        # 38
-        "N",                       # 39
-        "",                        # 40 Numérico
-        "",                        # 41
-        "",                        # 42 Numérico
-        "N",                       # 43
-        "",                        # 44 Numérico
-        "",                        # 45
-        "",                        # 46 Numérico
-        "N",                       # 47
-        "N",                       # 48
-        "",                        # 49 Numérico
-        "",                        # 50
-        "",                        # 51 Data
-        "",                        # 52
-        "",                        # 53 Decimal
-        "",                        # 54 Decimal
-        "",                        # 55 Numérico
-        "N",                       # 56
-        "",                        # 57 Numérico
-        "",                        # 58 Numérico
-        "",                        # 59
-        "",                        # 60 Numérico
-        "N",                       # 61
-        "",                        # 62 Data
-        "",                        # 63 Decimal
-        "",                        # 64 Decimal
-        "",                        # 65 Decimal
-        "",                        # 66 Numérico
-        "",                        # 67 Numérico
-        "",                        # 68 Numérico
-        "",                        # 69 Numérico
-        "",                        # 70 Numérico
-        "",                        # 71 Numérico
-        "",                        # 72 Numérico
-        "",                        # 73
-        "",                        # 74 Numérico
-        "",                        # 75 Data
-        "N",                       # 76
-        "",                        # 77
-        "",                        # 78
-        "N",                       # 79
-        "",                        # 80
-        "",                        # 81
-        "",                        # 82
-        "",                        # 83 Numérico
-        "",                        # 84 Numérico
-        "",                        # 85 Numérico
-        "",                        # 86 Numérico
-        "",                        # 87 Numérico
-        "",                        # 88 Numérico
-        cest,                      # 89
-        "",                        # 90 Numérico
-        "",                        # 91
-        "",                        # 92
+        "0100", cod_prod, descricao, "", ncm, "", "", "", cod_grupo,
+        unidade, "N", "O", "", "", "", "N", "",
+        fmt_decimal(val_unit, 3), "", "", cst_icms, aliq_icms, aliq_ipi, "M",
+        "", "N", "", "", "", "", "", "", "", "", "N", "", "", "", "N", "",
+        "", "", "N", "", "", "", "N", "N", "", "", "", "", "", "", "N",
+        "", "", "", "", "N", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", cest, "", "",
     ]
     while len(campos) < 92:
         campos.append("")
@@ -587,81 +478,16 @@ def gerar_registro_0110(det) -> str:
     pc = extrair_pis_cofins(det)
     ct = pc["class_trib"]
     return pipe_join([
-        "0110",           # 1
-        "Inicial",        # 2
-        pc["cst_e"],      # 3
-        "",               # 4  Numérico
-        "01",             # 5
-        "N",              # 6
-        "N",              # 7
-        pc["aliq_pis_e"], # 8
-        pc["aliq_cof_e"], # 9
-        "N",              # 10
-        "N",              # 11
-        "",               # 12
-        "",               # 13 Decimal
-        "",               # 14 Decimal
-        "",               # 15 Decimal
-        pc["cst_s"],      # 16
-        "N",              # 17
-        "",               # 18 Numérico
-        "",               # 19
-        "",               # 20
-        "N",              # 21
-        pc["aliq_pis_s"], # 22
-        pc["aliq_cof_s"], # 23
-        "N",              # 24
-        "N",              # 25
-        "",               # 26
-        "",               # 27 Decimal
-        "",               # 28 Decimal
-        "",               # 29 Decimal
-        "",               # 30 Numérico
-        "",               # 31 Numérico
-        "N",              # 32
-        "N",              # 33
-        "",               # 34 Numérico
-        "",               # 35 Numérico
-        "",               # 36 Decimal
-        "",               # 37 Numérico
-        "",               # 38 Numérico
-        "M",              # 39
-        "",               # 40 Decimal
-        "N",              # 41
-        "N",              # 42
-        "N",              # 43
-        "",               # 44 Numérico
-        "N",              # 45
-        "",               # 46
-        "N",              # 47
-        "",               # 48 Decimal
-        "",               # 49 Numérico
-        "",               # 50 Numérico
-        "",               # 51 Numérico
-        "",               # 52
-        "",               # 53 Decimal
-        "",               # 54 Decimal
-        "",               # 55
-        "N",              # 56
-        "",               # 57 Numérico
-        "",               # 58 Numérico
-        "N",              # 59
-        "",               # 60 Decimal
-        "",               # 61 Decimal
-        "N",              # 62
-        "",               # 63 Decimal
-        "N",              # 64
-        "N",              # 65
-        "N",              # 66
-        ct,               # 67
-        ct,               # 68
-        "N",              # 69
-        "N",              # 70
+        "0110", "Inicial", pc["cst_e"], "", "01", "N", "N",
+        pc["aliq_pis_e"], pc["aliq_cof_e"], "N", "N", "", "", "", "",
+        pc["cst_s"], "N", "", "", "", "N", pc["aliq_pis_s"], pc["aliq_cof_s"],
+        "N", "N", "", "", "", "", "", "", "N", "N", "", "", "", "", "", "M",
+        "", "N", "N", "N", "", "N", "", "N", "", "", "", "", "", "", "N",
+        "", "", "N", "", "", "N", "", "N", "N", "N", ct, ct, "N", "N",
     ])
 
 # ─────────────────────────────────────────────
 # REGISTRO 1000 – 98 campos
-# V3.7: Campos contados e verificados um a um contra o layout oficial
 # ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
@@ -702,7 +528,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     v_outro  = fmt_decimal(get_text(total, "nfe:vOutro"))
     v_icms_d = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
 
-    # Chave NF-e: 44 dígitos sem prefixo NFe
     chave = extrair_chave_nfe(nfe_root)
 
     transp        = nfe_root.find("nfe:infNFe/nfe:transp", NS)
@@ -715,119 +540,114 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     if inf_adic is not None:
         obs_fisco = get_text(inf_adic, "nfe:infAdFisco")[:300]
 
-    # Número da DI — campo 52
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
 
-    # Campo 70: tipo doc. importação (fixo "1" para importação)
     tipo_doc_importacao = "1" if importacao else ""
 
-    # ── 98 campos exatos conforme layout oficial ──────────────────────
     campos = [
-        "1000",         # 1  Fixo
-        especie,        # 2  Código espécie
-        cnpj_forn,      # 3  Inscrição fornecedor
-        "",             # 4  Código exclusão DIEF (Numérico)
-        acumulador,     # 5  Código acumulador (Numérico)
-        cfop_first,     # 6  CFOP (Numérico)
-        "",             # 7  Segmento (Numérico)
-        nNF,            # 8  Número documento (Numérico)
-        serie,          # 9  Série (Caractere)
-        "",             # 10 Número documento final (Numérico)
-        dhEmi,          # 11 Data entrada (Data)
-        dhEmi,          # 12 Data emissão (Data)
-        v_nf,           # 13 Valor contábil (Decimal 2)
-        "",             # 14 Valor exclusão DIEF (Decimal 2)
-        obs_fisco,      # 15 Observação (Caractere)
-        mod_frete,      # 16 Modalidade frete (Caractere)
-        emitente_nf,    # 17 Emitente NF P/T (Caractere)
-        "",             # 18 CFOP estendido SE (Numérico)
-        "",             # 19 Cód. transferência crédito RS (Numérico)
-        "",             # 20 Cód. recolhimento ISS retido (Caractere)
-        "",             # 21 Cód. recolhimento IRRF (Caractere)
-        "",             # 22 Código observação (Numérico)
-        "",             # 23 Data visto MG (Data)
-        "",             # 24 Fato gerador CRF (Caractere)
-        "",             # 25 Fato gerador IRRF (Caractere)
-        v_frete,        # 26 Valor frete (Decimal 2)
-        v_seg,          # 27 Valor seguro (Decimal 2)
-        v_outro,        # 28 Valor despesas (Decimal 2)
-        v_pis,          # 29 Valor PIS (Decimal 2)
-        "",             # 30 Tipo antecipação tributária (Numérico)
-        v_cofins,       # 31 Valor COFINS (Decimal 2)
-        "",             # 32 Valor DARE SE (Decimal 2)
-        "",             # 33 Alíquota DARE SE (Decimal 2)
-        "",             # 34 Valor BC ICMS ST (Numérico)
-        "",             # 35 Entradas isentas MG (Decimal 2)
-        "",             # 36 Outras entradas isentas MG (Decimal 2)
-        "",             # 37 Valor transporte incluído base MG (Decimal 2)
-        "",             # 38 Código ressarcimento (Numérico)
-        v_prod,         # 39 Valor produtos (Decimal 2)
-        c_mun_fg,       # 40 Município origem (Numérico)
-        "0",            # 41 Situação da nota (Numérico)
-        "",             # 42 Código situação tributária (Numérico)
-        "",             # 43 Sub série (Numérico)
-        ie_forn,        # 44 IE fornecedor (Caractere)
-        "",             # 45 IM fornecedor (Caractere)
-        "",             # 46 Código operação e prestação (Caractere)
-        "",             # 47 Valor deduzido receita tributável (Decimal 2)
-        "",             # 48 Competência (Data)
-        "",             # 49 Operação PA (Numérico)
-        "",             # 50 Número parecer fiscal (Caractere)
-        "",             # 51 Data parecer fiscal (Data) ← VAZIO
-        n_di,           # 52 Número declaração importação (Caractere)
-        "N",            # 53 Possui benefício fiscal S/N ← CORRETO
-        chave,          # 54 Chave NF-e (Caractere) ← CORRETO
-        "",             # 55 Cód. recolhimento FETHAB (Caractere)
-        "",             # 56 Responsável recolhimento FETHAB (Caractere)
-        "",             # 57 CFOP documento fiscal (Numérico)
-        "",             # 58 Tipo CT-e (Numérico)
-        "",             # 59 CT-e referência (Caractere)
-        "1",            # 60 Modalidade importação (Numérico)
-        "",             # 61 Cód. informação complementar (Numérico)
-        "",             # 62 Informação complementar (Caractere)
-        "",             # 63 Classe de consumo (Numérico)
-        "",             # 64 Tipo de ligação (Numérico)
-        "",             # 65 Grupo de tensão (Numérico)
-        "",             # 66 Tipo de assinante (Numérico)
-        "",             # 67 KWH consumido (Numérico)
-        "",             # 68 Valor fornecido energia/gás (Decimal 2)
-        "",             # 69 Valor cobrado de terceiros (Decimal 2)
-        tipo_doc_importacao,  # 70 Tipo doc. importação (Numérico) = "1"
-        "",             # 71 Número Ato Concessório Drawback (Caractere)
-        "",             # 72 Natureza frete PIS/COFINS (Numérico)
-        "",             # 73 CST PIS/COFINS (Numérico)
-        "",             # 74 Base crédito PIS/COFINS (Numérico)
-        "",             # 75 Valor serviços PIS/COFINS (Decimal 2)
-        "",             # 76 Base cálculo PIS/COFINS (Decimal 2)
-        "",             # 77 Alíquota PIS (Decimal 2)
-        "",             # 78 Alíquota COFINS (Decimal 2)
-        "",             # 79 Chave NFSe (Caractere)
-        "",             # 80 Número processo/ato concessório (Caractere)
-        "",             # 81 Origem processo (Caractere)
-        "",             # 82 Data escrituração (Data)
-        "",             # 83 CFPS DF (Numérico)
-        "",             # 84 Natureza receita PIS/COFINS (Numérico)
-        "",             # 85 CST IPI (Caractere)
-        "",             # 86 Lançamentos SCP (Numérico)
-        "",             # 87 Tipo serviço (Numérico)
-        "",             # 88 Município destino (Numérico)
-        "",             # 89 Pedágio (Decimal 2)
-        v_ipi,          # 90 IPI (Decimal 2)
-        v_st,           # 91 ICMS ST (Decimal 2)
-        "",             # 92 Classificação serviços EFD-Reinf tipo (Numérico)
-        "",             # 93 Indicativo prestação serviço EFD-Reinf (Numérico)
-        "",             # 94 Número documento arrecadação RS (Caractere)
-        "",             # 95 Tipo do título (Numérico)
-        "",             # 96 Identificação (Caractere)
-        v_icms_d,       # 97 ICMS Desonerado (Decimal 2)
-        "",             # 98 IPI Devolução (Decimal 2)
+        "1000",               # 1
+        especie,              # 2
+        cnpj_forn,            # 3
+        "",                   # 4
+        acumulador,           # 5
+        cfop_first,           # 6
+        "",                   # 7
+        nNF,                  # 8
+        serie,                # 9
+        "",                   # 10
+        dhEmi,                # 11
+        dhEmi,                # 12
+        v_nf,                 # 13
+        "",                   # 14
+        obs_fisco,            # 15
+        mod_frete,            # 16
+        emitente_nf,          # 17
+        "",                   # 18
+        "",                   # 19
+        "",                   # 20
+        "",                   # 21
+        "",                   # 22
+        "",                   # 23
+        "",                   # 24
+        "",                   # 25
+        v_frete,              # 26
+        v_seg,                # 27
+        v_outro,              # 28
+        v_pis,                # 29
+        "",                   # 30
+        v_cofins,             # 31
+        "",                   # 32
+        "",                   # 33
+        "",                   # 34
+        "",                   # 35
+        "",                   # 36
+        "",                   # 37
+        "",                   # 38
+        v_prod,               # 39
+        c_mun_fg,             # 40
+        "0",                  # 41
+        "",                   # 42
+        "",                   # 43
+        ie_forn,              # 44
+        "",                   # 45
+        "",                   # 46
+        "",                   # 47
+        "",                   # 48
+        "",                   # 49
+        "",                   # 50
+        "",                   # 51
+        n_di,                 # 52
+        "N",                  # 53
+        chave,                # 54
+        "",                   # 55
+        "",                   # 56
+        "",                   # 57
+        "",                   # 58
+        "",                   # 59
+        "1",                  # 60
+        "",                   # 61
+        "",                   # 62
+        "",                   # 63
+        "",                   # 64
+        "",                   # 65
+        "",                   # 66
+        "",                   # 67
+        "",                   # 68
+        "",                   # 69
+        tipo_doc_importacao,  # 70
+        "",                   # 71
+        "",                   # 72
+        "",                   # 73
+        "",                   # 74
+        "",                   # 75
+        "",                   # 76
+        "",                   # 77
+        "",                   # 78
+        "",                   # 79
+        "",                   # 80
+        "",                   # 81
+        "",                   # 82
+        "",                   # 83
+        "",                   # 84
+        "",                   # 85
+        "",                   # 86
+        "",                   # 87
+        "",                   # 88
+        "",                   # 89
+        v_ipi,                # 90
+        v_st,                 # 91
+        "",                   # 92
+        "",                   # 93
+        "",                   # 94
+        "",                   # 95
+        "",                   # 96
+        v_icms_d,             # 97
+        "",                   # 98
     ]
-
-    # Validação: garante exatamente 98 campos (sem contar o identificador "1000")
     assert len(campos) == 98, f"1000: esperado 98 campos, gerado {len(campos)}"
     return pipe_join(campos)
 
@@ -863,12 +683,22 @@ def gerar_registros_1015(nfe_root) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# REGISTROS 1020 – SEM 183 e 184
+# REGISTROS 1020 – V3.8
+# ICMS e IPI: agrupados por alíquota (uma linha 1020 por alíquota distinta)
+# PIS/COFINS: agrupados por alíquota
+# ICMS desonerado: agrupado por alíquota
+# PIS/COFINS SPED (133/134): totais únicos
 # ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root) -> list:
-    total  = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
-    v_nf   = fmt_decimal(get_text(total, "nfe:vNF"))
-    linhas = []
+    """
+    V3.8: Gera uma linha 1020 por alíquota distinta para ICMS e IPI.
+    Regra: percorre todos os itens, agrupa por alíquota, soma bases e valores.
+    Itens sem alíquota (NT/isentos) geram linha com valor=0 e isentas=base.
+    """
+    total    = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
+    det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
+    v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
+    linhas   = []
 
     def r1020(cod, perc_red="", base="", aliq="", valor="",
               isentas="", outras="", v_ipi="", v_st="", v_cont="", cod_rec=""):
@@ -878,34 +708,190 @@ def gerar_registros_1020(nfe_root) -> list:
             "", "", "", "", "", "", "",
         ])
 
-    v_bc_icms    = get_text(total, "nfe:vBC")
-    v_icms       = get_text(total, "nfe:vICMS")
-    v_ipi_tot    = get_text(total, "nfe:vIPI")
-    v_st_tot     = get_text(total, "nfe:vST")
-    v_pis_tot    = get_text(total, "nfe:vPIS")
-    v_cofins_tot = get_text(total, "nfe:vCOFINS")
-    v_icms_deson = get_text(total, "nfe:vICMSDeson")
-
-    try:
-        bc_f  = float(v_bc_icms)
-        icm_f = float(v_icms)
-        aliq_icms_med = fmt_decimal(str(icm_f / bc_f * 100)) if bc_f > 0 else ""
-    except (ValueError, ZeroDivisionError):
-        aliq_icms_med = ""
-
-    det_list     = nfe_root.findall("nfe:infNFe/nfe:det", NS)
-    bc_ipi_total = bc_pis_total = bc_cof_total = 0.0
-
+    # ── 1. ICMS: agrupa por alíquota ─────────────────────────────────
+    # dict: aliq_str → {"bc": float, "valor": float, "deson": float}
+    icms_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
         if imp is None:
             continue
-        ipi_t = imp.find("nfe:IPI/nfe:IPITrib", NS)
-        if ipi_t is not None:
-            try:
-                bc_ipi_total += float(get_text(ipi_t, "nfe:vBC") or "0")
-            except ValueError:
-                pass
+        for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40",
+                   "ICMS51","ICMS60","ICMS70","ICMS90","ICMSSN101",
+                   "ICMSSN102","ICMSSN201","ICMSSN202","ICMSSN500","ICMSSN900"]:
+            node = imp.find(f"nfe:ICMS/nfe:{tp}", NS)
+            if node is not None:
+                aliq_str = get_text(node, "nfe:pICMS") or "0"
+                bc       = safe_float(get_text(node, "nfe:vBC"))
+                valor    = safe_float(get_text(node, "nfe:vICMS"))
+                deson    = safe_float(get_text(node, "nfe:vICMSDeson"))
+                key = aliq_str
+                if key not in icms_por_aliq:
+                    icms_por_aliq[key] = {"bc": 0.0, "valor": 0.0, "deson": 0.0}
+                icms_por_aliq[key]["bc"]    += bc
+                icms_por_aliq[key]["valor"] += valor
+                icms_por_aliq[key]["deson"] += deson
+                break
+
+    # Gera linhas 1020 para ICMS (cód 1) — uma por alíquota
+    v_ipi_tot = fmt_decimal(get_text(total, "nfe:vIPI"))
+    v_st_tot  = fmt_decimal(get_text(total, "nfe:vST"))
+    for aliq_str, dados in sorted(icms_por_aliq.items(),
+                                   key=lambda x: safe_float(x[0])):
+        if dados["valor"] > 0 or dados["bc"] > 0:
+            linhas.append(r1020(
+                1,
+                base  = fmt_decimal(str(dados["bc"])),
+                aliq  = fmt_decimal(aliq_str),
+                valor = fmt_decimal(str(dados["valor"])),
+                v_ipi = v_ipi_tot,
+                v_st  = v_st_tot,
+                v_cont= v_nf,
+            ))
+
+    # ── 2. IPI: agrupa por alíquota ───────────────────────────────────
+    # dict: aliq_str → {"bc": float, "valor": float, "isentas": float}
+    ipi_por_aliq = {}
+    for det in det_list:
+        imp = det.find("nfe:imposto", NS)
+        if imp is None:
+            continue
+        ipi_trib = imp.find("nfe:IPI/nfe:IPITrib", NS)
+        ipi_nt   = imp.find("nfe:IPI/nfe:IPINT", NS)
+        if ipi_trib is not None:
+            aliq_str = get_text(ipi_trib, "nfe:pIPI") or "0"
+            bc       = safe_float(get_text(ipi_trib, "nfe:vBC"))
+            valor    = safe_float(get_text(ipi_trib, "nfe:vIPI"))
+            key = aliq_str
+            if key not in ipi_por_aliq:
+                ipi_por_aliq[key] = {"bc": 0.0, "valor": 0.0, "isentas": 0.0}
+            ipi_por_aliq[key]["bc"]    += bc
+            ipi_por_aliq[key]["valor"] += valor
+        elif ipi_nt is not None:
+            # NT: soma na chave "0" como isentas
+            # usa vProd como base isenta
+            v_prod_item = safe_float(get_text(det.find("nfe:prod", NS), "nfe:vProd"))
+            key = "0"
+            if key not in ipi_por_aliq:
+                ipi_por_aliq[key] = {"bc": 0.0, "valor": 0.0, "isentas": 0.0}
+            ipi_por_aliq[key]["bc"]      += v_prod_item
+            ipi_por_aliq[key]["isentas"] += v_prod_item
+
+    # Gera linhas 1020 para IPI (cód 2) — uma por alíquota
+    for aliq_str, dados in sorted(ipi_por_aliq.items(),
+                                   key=lambda x: safe_float(x[0])):
+        aliq_f = safe_float(aliq_str)
+        if aliq_f == 0 and dados["isentas"] > 0:
+            # Linha de isentas/NT
+            linhas.append(r1020(
+                2,
+                base    = fmt_decimal(str(dados["bc"])),
+                aliq    = "",
+                valor   = "",
+                isentas = fmt_decimal(str(dados["isentas"])),
+                v_cont  = v_nf,
+            ))
+        elif dados["valor"] > 0 or dados["bc"] > 0:
+            linhas.append(r1020(
+                2,
+                base  = fmt_decimal(str(dados["bc"])),
+                aliq  = fmt_decimal(aliq_str),
+                valor = fmt_decimal(str(dados["valor"])),
+                v_cont= v_nf,
+            ))
+
+    # ── 3. PIS: agrupa por alíquota ───────────────────────────────────
+    pis_por_aliq = {}
+    for det in det_list:
+        imp = det.find("nfe:imposto", NS)
+        if imp is None:
+            continue
+        pis_node = imp.find("nfe:PIS", NS)
+        if pis_node is not None:
+            for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
+                pn = pis_node.find(f"nfe:{pt}", NS)
+                if pn is not None:
+                    aliq_str = get_text(pn, "nfe:pPIS") or "0"
+                    bc       = safe_float(get_text(pn, "nfe:vBC"))
+                    valor    = safe_float(get_text(pn, "nfe:vPIS"))
+                    key = aliq_str
+                    if key not in pis_por_aliq:
+                        pis_por_aliq[key] = {"bc": 0.0, "valor": 0.0}
+                    pis_por_aliq[key]["bc"]    += bc
+                    pis_por_aliq[key]["valor"] += valor
+                    break
+
+    for aliq_str, dados in sorted(pis_por_aliq.items(),
+                                   key=lambda x: safe_float(x[0])):
+        if dados["valor"] > 0 or dados["bc"] > 0:
+            linhas.append(r1020(
+                4,
+                base  = fmt_decimal(str(dados["bc"])),
+                aliq  = fmt_decimal(aliq_str),
+                valor = fmt_decimal(str(dados["valor"])),
+                v_cont= v_nf,
+            ))
+
+    # ── 4. COFINS: agrupa por alíquota ────────────────────────────────
+    cof_por_aliq = {}
+    for det in det_list:
+        imp = det.find("nfe:imposto", NS)
+        if imp is None:
+            continue
+        cof_node = imp.find("nfe:COFINS", NS)
+        if cof_node is not None:
+            for ct in ["COFINSAliq", "COFINSQtde", "COFINSNT", "COFINSOutr"]:
+                cn = cof_node.find(f"nfe:{ct}", NS)
+                if cn is not None:
+                    aliq_str = get_text(cn, "nfe:pCOFINS") or "0"
+                    bc       = safe_float(get_text(cn, "nfe:vBC"))
+                    valor    = safe_float(get_text(cn, "nfe:vCOFINS"))
+                    key = aliq_str
+                    if key not in cof_por_aliq:
+                        cof_por_aliq[key] = {"bc": 0.0, "valor": 0.0}
+                    cof_por_aliq[key]["bc"]    += bc
+                    cof_por_aliq[key]["valor"] += valor
+                    break
+
+    for aliq_str, dados in sorted(cof_por_aliq.items(),
+                                   key=lambda x: safe_float(x[0])):
+        if dados["valor"] > 0 or dados["bc"] > 0:
+            linhas.append(r1020(
+                5,
+                base  = fmt_decimal(str(dados["bc"])),
+                aliq  = fmt_decimal(aliq_str),
+                valor = fmt_decimal(str(dados["valor"])),
+                v_cont= v_nf,
+            ))
+
+    # ── 5. ICMS Desonerado: agrupa por alíquota (cód 45) ─────────────
+    icms_deson_por_aliq = {}
+    for aliq_str, dados in icms_por_aliq.items():
+        if dados["deson"] > 0:
+            if aliq_str not in icms_deson_por_aliq:
+                icms_deson_por_aliq[aliq_str] = {"bc": 0.0, "deson": 0.0}
+            icms_deson_por_aliq[aliq_str]["bc"]    += dados["bc"]
+            icms_deson_por_aliq[aliq_str]["deson"] += dados["deson"]
+
+    for aliq_str, dados in sorted(icms_deson_por_aliq.items(),
+                                   key=lambda x: safe_float(x[0])):
+        if dados["deson"] > 0:
+            linhas.append(r1020(
+                45,
+                base  = fmt_decimal(str(dados["bc"])),
+                aliq  = fmt_decimal(aliq_str),
+                valor = fmt_decimal(str(dados["deson"])),
+                v_cont= v_nf,
+            ))
+
+    # ── 6. PIS SPED (133) e COFINS SPED (134): totais únicos ─────────
+    v_pis_tot    = get_text(total, "nfe:vPIS")
+    v_cofins_tot = get_text(total, "nfe:vCOFINS")
+
+    bc_pis_total = bc_cof_total = 0.0
+    for det in det_list:
+        imp = det.find("nfe:imposto", NS)
+        if imp is None:
+            continue
         for pt in ["PISAliq", "PISQtde", "PISNT", "PISOutr"]:
             pn = imp.find(f"nfe:PIS/nfe:{pt}", NS)
             if pn is not None:
@@ -923,28 +909,17 @@ def gerar_registros_1020(nfe_root) -> list:
                     pass
                 break
 
-    if v_icms and float(v_icms) > 0:
-        linhas.append(r1020(1, base=fmt_decimal(v_bc_icms), aliq=aliq_icms_med,
-            valor=fmt_decimal(v_icms), v_ipi=fmt_decimal(v_ipi_tot),
-            v_st=fmt_decimal(v_st_tot), v_cont=v_nf))
-    if v_ipi_tot and float(v_ipi_tot) > 0:
-        linhas.append(r1020(2, base=fmt_decimal(str(bc_ipi_total)),
-            valor=fmt_decimal(v_ipi_tot), v_cont=v_nf))
-    if v_pis_tot and float(v_pis_tot) > 0:
-        linhas.append(r1020(4, base=fmt_decimal(str(bc_pis_total)),
-            valor=fmt_decimal(v_pis_tot), v_cont=v_nf))
-    if v_cofins_tot and float(v_cofins_tot) > 0:
-        linhas.append(r1020(5, base=fmt_decimal(str(bc_cof_total)),
-            valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
-    if v_icms_deson and float(v_icms_deson) > 0:
-        linhas.append(r1020(45, base=fmt_decimal(v_bc_icms), aliq=aliq_icms_med,
-            valor=fmt_decimal(v_icms_deson), v_cont=v_nf))
-    if v_pis_tot and float(v_pis_tot) > 0:
-        linhas.append(r1020(133, base=fmt_decimal(str(bc_pis_total)),
-            valor=fmt_decimal(v_pis_tot), v_cont=v_nf))
-    if v_cofins_tot and float(v_cofins_tot) > 0:
-        linhas.append(r1020(134, base=fmt_decimal(str(bc_cof_total)),
-            valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
+    if v_pis_tot and safe_float(v_pis_tot) > 0:
+        linhas.append(r1020(133,
+            base  = fmt_decimal(str(bc_pis_total)),
+            valor = fmt_decimal(v_pis_tot),
+            v_cont= v_nf))
+    if v_cofins_tot and safe_float(v_cofins_tot) > 0:
+        linhas.append(r1020(134,
+            base  = fmt_decimal(str(bc_cof_total)),
+            valor = fmt_decimal(v_cofins_tot),
+            v_cont= v_nf))
+
     # 183 e 184 removidos — IBS/CBS via 1030 e 1150/1151
     return linhas
 
@@ -1052,123 +1027,28 @@ def gerar_registro_1030(det, seq: int) -> str:
         v_total = fmt_decimal(v_prod)
 
     campos = [
-        "1030",                 # 1
-        cod_prod,               # 2
-        qtd,                    # 3
-        v_total,                # 4
-        v_ipi,                  # 5
-        fmt_decimal(v_prod),    # 6
-        "1",                    # 7
-        d_di,                   # 8
-        n_di,                   # 9
-        cst_icms,               # 10
-        fmt_decimal(v_prod),    # 11
-        fmt_decimal(v_desc),    # 12
-        v_bc_icms,              # 13
-        v_bc_st,                # 14
-        aliq_icms,              # 15
-        "",                     # 16
-        "",                     # 17 Numérico
-        "",                     # 18
-        "",                     # 19
-        fmt_decimal(v_outro),   # 20
-        "",                     # 21
-        v_icms,                 # 22
-        "",                     # 23
-        "",                     # 24
-        "",                     # 25
-        "",                     # 26
-        fmt_decimal(v_unit, 6), # 27
-        "",                     # 28
-        cst_ipi,                # 29 Numérico
-        aliq_ipi,               # 30
-        "",                     # 31
-        "",                     # 32
-        "",                     # 33
-        cfop,                   # 34 Numérico
-        "",                     # 35
-        aliq_pis,               # 36
-        v_pis,                  # 37
-        aliq_cof,               # 38
-        v_cof,                  # 39
-        fmt_decimal(v_prod),    # 40
-        cst_pis,                # 41 Numérico
-        bc_pis,                 # 42
-        cst_cof,                # 43 Numérico
-        bc_cof,                 # 44
-        "",                     # 45
-        "",                     # 46 Numérico
-        "",                     # 47
-        "",                     # 48 Numérico
-        "",                     # 49 Data
-        "",                     # 50 Data
-        "",                     # 51 Numérico
-        "",                     # 52
-        "",                     # 53
-        "",                     # 54
-        "",                     # 55
-        "S",                    # 56
-        unidade,                # 57
-        "",                     # 58 Numérico
-        "",                     # 59 Numérico
-        fmt_decimal(v_prod),    # 60
-        "",                     # 61
-        "",                     # 62
-        "",                     # 63
-        "",                     # 64
-        "",                     # 65
-        "",                     # 66
-        "",                     # 67 Numérico
-        "",                     # 68 Numérico
-        "",                     # 69
-        "",                     # 70 Numérico
-        "",                     # 71 Numérico
-        "",                     # 72 Numérico
-        "",                     # 73 Numérico
-        "",                     # 74
-        "",                     # 75
-        "",                     # 76
-        "",                     # 77
-        "",                     # 78
-        "",                     # 79 Numérico
-        "",                     # 80
-        "",                     # 81 Numérico
-        "",                     # 82 Numérico
-        "",                     # 83 Numérico
-        "",                     # 84 Numérico
-        "",                     # 85
-        "",                     # 86
-        "",                     # 87
-        "",                     # 88
-        "",                     # 89
-        "",                     # 90
-        cest,                   # 91 Numérico
-        "",                     # 92
-        "",                     # 93
-        "",                     # 94
-        "",                     # 95
-        "",                     # 96
-        v_icms_des,             # 97
-        "",                     # 98 Numérico
-        "",                     # 99
-        "",                     # 100
-        "",                     # 101
-        "",                     # 102
-        "",                     # 103
-        ibs_class_trib,         # 104
-        ibs_bc,                 # 105
-        ibs_aliq,               # 106
-        ibs_val,                # 107
-        cbs_class_trib,         # 108
-        cbs_bc,                 # 109
-        cbs_aliq,               # 110
-        cbs_val,                # 111
+        "1030", cod_prod, qtd, v_total, v_ipi, fmt_decimal(v_prod),
+        "1", d_di, n_di, cst_icms, fmt_decimal(v_prod), fmt_decimal(v_desc),
+        v_bc_icms, v_bc_st, aliq_icms, "", "", "", "",
+        fmt_decimal(v_outro), "", v_icms, "", "", "", "",
+        fmt_decimal(v_unit, 6), "", cst_ipi, aliq_ipi, "", "", "",
+        cfop, "", aliq_pis, v_pis, aliq_cof, v_cof,
+        fmt_decimal(v_prod), cst_pis, bc_pis, cst_cof, bc_cof,
+        "", "", "", "", "", "", "", "", "", "", "",
+        "S", unidade, "", "", fmt_decimal(v_prod),
+        "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        cest, "", "", "", "", v_icms_des, "", "", "", "", "", "",
+        ibs_class_trib, ibs_bc, ibs_aliq, ibs_val,
+        cbs_class_trib, cbs_bc, cbs_aliq, cbs_val,
     ]
     assert len(campos) == 111, f"1030: esperado 111 campos, gerado {len(campos)}"
     return pipe_join(campos)
 
 # ─────────────────────────────────────────────
-# REGISTRO 1097 – 35 campos
+# REGISTRO 1097
 # ─────────────────────────────────────────────
 def gerar_registro_1097(nfe_root) -> str:
     transp = nfe_root.find("nfe:infNFe/nfe:transp", NS)
@@ -1390,7 +1270,6 @@ with st.sidebar:
     cnpj_fallback = st.text_input(
         "CNPJ da Empresa (obrigatorio para importacao)",
         value="", max_chars=14,
-        help="Para notas de importacao, informe o CNPJ da empresa importadora."
     )
     acumulador = st.text_input("Codigo do Acumulador", value="1157")
     especie    = st.text_input("Codigo da Especie", value="36")
@@ -1421,9 +1300,6 @@ with st.sidebar:
         for cod, desc in sorted(TABELA_GRUPOS.items()):
             if cod > 0:
                 st.caption(f"`{cod:3d}` - {desc}")
-    with st.expander("Mapeamento CST Entrada → Saida"):
-        for ce, cs in CST_ENTRADA_SAIDA.items():
-            st.caption(f"CST {ce} → {cs}")
 
 # ─────────────────────────────────────────────
 # INSTRUÇÕES
@@ -1431,22 +1307,19 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V3.7-FINAL — Contagem exata dos 98 campos do Registro 1000</h4>
+        <h4>V3.8-FINAL — 1020: uma linha por alíquota (ICMS e IPI)</h4>
         <ul>
-          <li><b>Causa raiz</b>: os campos 53 e 54 estavam trocados — a chave NF-e ia para o campo 53 (S/N) e o campo 54 (chave) ficava vazio</li>
-          <li><b>1000 campo 51</b>: Data parecer fiscal → sempre vazio</li>
-          <li><b>1000 campo 52</b>: Número DI → <code>n_di</code> do XML</li>
-          <li><b>1000 campo 53</b>: Possui benefício fiscal → <code>N</code></li>
-          <li><b>1000 campo 54</b>: Chave NF-e → 44 dígitos limpos</li>
-          <li><b>1000 campo 70</b>: Tipo doc. importação → <code>1</code></li>
-          <li><b>1000 campo 92</b>: Classificação EFD-Reinf → vazio (não recebe valor indevido)</li>
-          <li>Adicionado <code>assert len(campos) == 98</code> para garantir contagem correta</li>
+          <li><b>Imposto 1 (ICMS)</b>: uma linha 1020 por alíquota distinta encontrada nos itens</li>
+          <li><b>Imposto 2 (IPI)</b>: uma linha 1020 por alíquota distinta; itens NT/isentos geram linha separada com campo "Isentas"</li>
+          <li><b>Imposto 4 (PIS)</b>: uma linha 1020 por alíquota distinta</li>
+          <li><b>Imposto 5 (COFINS)</b>: uma linha 1020 por alíquota distinta</li>
+          <li><b>Imposto 45 (ICMS Desonerado)</b>: uma linha por alíquota distinta</li>
+          <li><b>Impostos 133/134 (PIS/COFINS SPED)</b>: totais únicos (sem agrupamento por alíquota)</li>
+          <li>Adicionado helper <code>safe_float()</code> para conversão segura</li>
         </ul>
+        <h4>V3.7-FINAL — Contagem exata 98 campos no 1000 com assert</h4>
         <h4>V3.6-FINAL — Removidos 183/184 do 1020</h4>
         <h4>V3.5-FINAL — Campos numéricos/decimais corrigidos no 0100 e 0110</h4>
-        <h4>V3.4-FINAL — Chave NF-e 44 dígitos + campo 53 explícito</h4>
-        <h4>V3.3-FINAL — Campo 70 = 1 para importação</h4>
-        <h4>V3.2-FINAL — Código país tabela interna Domínio</h4>
         </div>
     """, unsafe_allow_html=True)
 
