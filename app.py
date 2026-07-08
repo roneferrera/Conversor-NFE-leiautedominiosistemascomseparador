@@ -73,7 +73,7 @@ CST_IPI_ISENTAS = {"02","03","04","05"}
 
 # ─────────────────────────────────────────────
 # DE/PARA CFOP → ACUMULADOR
-# Apenas 3101 e 3102 possuem acumulador padrão fixo.
+# Apenas 3101→1108 e 3102→1157 possuem padrão fixo.
 # As demais ficam em branco para preenchimento manual.
 # ─────────────────────────────────────────────
 CFOP_ACUMULADOR_PADRAO = {
@@ -97,8 +97,8 @@ CFOP_ACUMULADOR_PADRAO = {
 }
 
 CFOP_DESCRICAO = {
-    "3101": "Compra p/ industrializacao – importacao direta",
-    "3102": "Compra p/ comercializacao – importacao direta",
+    "3101": "Compra p/ industrializacao - importacao direta",
+    "3102": "Compra p/ comercializacao - importacao direta",
     "3126": "Compra p/ uso na prestacao de servico",
     "3127": "Compra p/ uso na prestacao de servico (via interior)",
     "3201": "Devolucao de venda p/ industrializacao",
@@ -202,6 +202,21 @@ PAISES_NOME_PARA_DOMINIO = {
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
+def sanitizar_xml_bytes(raw: bytes) -> bytes:
+    """
+    Remove BOM UTF-8/UTF-16 e garante que o XML chegue limpo ao parser.
+    Também trata encoding declarations incorretos comuns em XMLs de NF-e.
+    """
+    if not raw:
+        return raw
+    # Remove BOM UTF-8
+    if raw.startswith(b'\xef\xbb\xbf'):
+        raw = raw[3:]
+    # Remove BOM UTF-16 LE/BE
+    elif raw.startswith(b'\xff\xfe') or raw.startswith(b'\xfe\xff'):
+        raw = raw[2:]
+    return raw
+
 def resolver_codigo_pais_dominio(c_pais_xml: str, x_pais_xml: str) -> str:
     c_norm = (c_pais_xml or "").strip().zfill(4)
     if c_norm in PAISES_BACEN_PARA_DOMINIO:
@@ -270,31 +285,60 @@ def safe_float(v: str) -> float:
     except (ValueError, TypeError):
         return 0.0
 
+def parse_xml_seguro(raw_bytes: bytes):
+    """
+    Faz o parse do XML de forma segura:
+    1. Sanitiza BOM/encoding
+    2. Tenta ET.fromstring direto
+    3. Se falhar, tenta forçar UTF-8
+    4. Se ainda falhar, tenta latin-1
+    Retorna (root, erro_str) — root=None se falhou.
+    """
+    if not raw_bytes:
+        return None, "Arquivo vazio (0 bytes)"
+
+    limpo = sanitizar_xml_bytes(raw_bytes)
+
+    # Tentativa 1: parse direto
+    try:
+        return ET.fromstring(limpo), None
+    except ET.ParseError:
+        pass
+
+    # Tentativa 2: decodifica como UTF-8 e re-encode
+    try:
+        texto = limpo.decode("utf-8", errors="replace")
+        return ET.fromstring(texto.encode("utf-8")), None
+    except ET.ParseError:
+        pass
+
+    # Tentativa 3: decodifica como latin-1
+    try:
+        texto = limpo.decode("latin-1", errors="replace")
+        return ET.fromstring(texto.encode("utf-8")), None
+    except ET.ParseError as e:
+        return None, f"XML invalido: {e}"
+
 # ─────────────────────────────────────────────
-# DE/PARA CFOP → ACUMULADOR — funções auxiliares
+# DE/PARA CFOP → ACUMULADOR
 # ─────────────────────────────────────────────
 def extrair_cfops_importacao_dos_arquivos(arquivos: list) -> list:
-    """Extrai somente CFOPs de importacao (3xxx) presentes nos XMLs, em ordem crescente."""
+    """Extrai somente CFOPs de importacao (3xxx) presentes nos XMLs."""
     cfops = set()
     for arq in arquivos:
-        try:
-            root = ET.fromstring(arq["bytes"])
-            nfe  = root.find("nfe:NFe", NS) or root
-            for det in nfe.findall("nfe:infNFe/nfe:det", NS):
-                cfop = get_text(det.find("nfe:prod", NS), "nfe:CFOP").strip()
-                if cfop.startswith("3"):
-                    cfops.add(cfop)
-        except Exception:
-            pass
+        root, erro = parse_xml_seguro(arq["bytes"])
+        if root is None:
+            continue
+        nfe = root.find("nfe:NFe", NS) or root
+        for det in nfe.findall("nfe:infNFe/nfe:det", NS):
+            cfop = get_text(det.find("nfe:prod", NS), "nfe:CFOP").strip()
+            if cfop.startswith("3"):
+                cfops.add(cfop)
     return sorted(cfops)
 
 def resolver_acumulador_por_cfop(cfop: str,
                                   mapa_customizado: dict,
                                   acumulador_fallback: str = "1157") -> str:
-    """
-    Prioridade: mapa customizado → padrão fixo (pode ser '') → fallback só para CFOPs desconhecidas.
-    CFOPs catalogadas com padrão '' retornam '' (forçam preenchimento manual).
-    """
     if cfop in mapa_customizado:
         return mapa_customizado[cfop]
     if cfop in CFOP_ACUMULADOR_PADRAO:
@@ -356,22 +400,30 @@ def extrair_xmls_importacao_do_zip(zip_bytes: bytes) -> tuple:
                     continue
                 total_xml += 1
                 xml_bytes_item = zf.read(nome)
+
+                # ── CORREÇÃO: guard bytes vazios + parse seguro ──
                 if not xml_bytes_item:
                     erros_parse.append(f"{nome.split('/')[-1]} (arquivo vazio no ZIP)")
                     continue
-                try:
-                    root = ET.fromstring(xml_bytes_item)
-                    nfe  = root.find("nfe:NFe", NS) or root
-                    det_list = nfe.findall("nfe:infNFe/nfe:det", NS)
-                    cfop = ""
-                    if det_list:
-                        cfop = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
-                    if cfop.startswith("3"):
-                        xmls_importacao.append({"nome": nome.split("/")[-1], "bytes": xml_bytes_item})
-                    else:
-                        ignorados.append(f"{nome.split('/')[-1]} (CFOP {cfop or 'N/A'})")
-                except ET.ParseError:
-                    erros_parse.append(nome.split("/")[-1])
+
+                root, erro = parse_xml_seguro(xml_bytes_item)
+                if root is None:
+                    erros_parse.append(f"{nome.split('/')[-1]} ({erro})")
+                    continue
+
+                nfe = root.find("nfe:NFe", NS) or root
+                det_list = nfe.findall("nfe:infNFe/nfe:det", NS)
+                cfop = ""
+                if det_list:
+                    cfop = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
+                if cfop.startswith("3"):
+                    # Guarda os bytes SANITIZADOS para não ter problema no reparse
+                    xmls_importacao.append({
+                        "nome": nome.split("/")[-1],
+                        "bytes": sanitizar_xml_bytes(xml_bytes_item)
+                    })
+                else:
+                    ignorados.append(f"{nome.split('/')[-1]} (CFOP {cfop or 'N/A'})")
     except zipfile.BadZipFile:
         return [], 0, [], ["Arquivo ZIP invalido ou corrompido."]
     return xmls_importacao, total_xml, ignorados, erros_parse
@@ -672,14 +724,11 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 # ─────────────────────────────────────────────
-# REGISTRO 0000
+# REGISTROS (0000, 0020, 0100, 0110 — iguais ao V4.9)
 # ─────────────────────────────────────────────
 def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
-# ─────────────────────────────────────────────
-# REGISTRO 0020
-# ─────────────────────────────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
         razao       = get_text(dest,"nfe:xNome")[:150].upper()
@@ -714,20 +763,17 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         regime       = {"1":"M","2":"E","3":"N"}.get(crt,"N")
         contrib      = "S" if ie and ie.upper() not in ("ISENTO","NAO CONTRIBUINTE","") else "N"
     c = [""] * 33
-    c[0]  = "0020"; c[1]  = inscricao;   c[2]  = razao;       c[3]  = fantasia
-    c[4]  = logradouro;  c[5]  = numero;      c[6]  = complemento; c[7]  = bairro
-    c[8]  = cod_mun;     c[9]  = uf_campo;    c[10] = cod_pais;    c[11] = cep
-    c[12] = ie;          c[13] = "";           c[14] = "";          c[15] = ""
-    c[16] = "";          c[17] = "";           c[18] = "";          c[19] = ""
-    c[20] = "";          c[21] = "N";          c[22] = "7";         c[23] = regime
-    c[24] = contrib;     c[25] = "";           c[26] = "";          c[27] = ""
-    c[28] = "";          c[29] = "N";          c[30] = "N";         c[31] = ""
-    c[32] = ""
+    c[0]="0020"; c[1]=inscricao; c[2]=razao; c[3]=fantasia
+    c[4]=logradouro; c[5]=numero; c[6]=complemento; c[7]=bairro
+    c[8]=cod_mun; c[9]=uf_campo; c[10]=cod_pais; c[11]=cep
+    c[12]=ie; c[13]=""; c[14]=""; c[15]=""
+    c[16]=""; c[17]=""; c[18]=""; c[19]=""
+    c[20]=""; c[21]="N"; c[22]="7"; c[23]=regime
+    c[24]=contrib; c[25]=""; c[26]=""; c[27]=""
+    c[28]=""; c[29]="N"; c[30]="N"; c[31]=""
+    c[32]=""
     return pipe_join(c)
 
-# ─────────────────────────────────────────────
-# REGISTRO 0100
-# ─────────────────────────────────────────────
 def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     prod      = det.find("nfe:prod", NS)
     cod_prod  = get_text(prod,"nfe:cProd")[:14]
@@ -762,9 +808,6 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
 
-# ─────────────────────────────────────────────
-# REGISTRO 0110
-# ─────────────────────────────────────────────
 def extrair_pis_cofins(det, aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0) -> dict:
     imposto = det.find("nfe:imposto", NS)
     res = {"cst_e":"","aliq_pis_e":"","aliq_cof_e":"","cst_s":"",
@@ -819,9 +862,6 @@ def gerar_registro_0110(det, importacao: bool = False,
     c[66]=ct; c[67]=ct; c[68]="N"; c[69]="N"
     return pipe_join(c)
 
-# ─────────────────────────────────────────────
-# REGISTRO 1000
-# ─────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157",
                         especie: str = "36",
@@ -893,9 +933,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     c[94]=""; c[95]=""; c[96]=v_icms_d; c[97]=""
     return pipe_join(c)
 
-# ─────────────────────────────────────────────
-# REGISTRO 1010 / 1015
-# ─────────────────────────────────────────────
 def gerar_registros_1010(nfe_root) -> list:
     linhas = []
     inf_adic = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
@@ -916,9 +953,6 @@ def gerar_registros_1015(nfe_root) -> list:
                 linhas.append(pipe_join(["1015", cod, bloco]))
     return linhas
 
-# ─────────────────────────────────────────────
-# REGISTRO 1020
-# ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     total    = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
@@ -1074,9 +1108,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                             valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
     return linhas
 
-# ─────────────────────────────────────────────
-# REGISTRO 1030
-# ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
                          aliq_pis_pad: float = 0.0,
                          aliq_cof_pad: float = 0.0) -> str:
@@ -1198,9 +1229,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[107]=cbs_class_trib; c[108]=cbs_bc; c[109]=cbs_aliq; c[110]=cbs_val
     return pipe_join(c)
 
-# ─────────────────────────────────────────────
-# REGISTRO 1097
-# ─────────────────────────────────────────────
 def gerar_registro_1097(nfe_root) -> str:
     transp = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     if transp is None: return ""
@@ -1244,7 +1272,7 @@ def gerar_registro_1151(ct, bc, aliq, valor) -> str:
     return pipe_join(["1151", ct, bc, aliq, valor])
 
 # ─────────────────────────────────────────────
-# CONVERSÃO PRINCIPAL
+# CONVERSÃO PRINCIPAL — usa parse_xml_seguro
 # ─────────────────────────────────────────────
 def converter_xml(xml_content: bytes, cnpj_fallback: str,
                   acumulador: str = "1157", especie: str = "36",
@@ -1252,12 +1280,11 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
                   incluir_0100: bool = True, incluir_0110: bool = True,
                   incluir_1010: bool = True, incluir_1015: bool = False,
                   incluir_1097: bool = True, grupo_padrao: int = 0) -> tuple:
-    if not xml_content:
-        return "", {"erro": "Arquivo vazio (0 bytes)."}, []
-    try:
-        root = ET.fromstring(xml_content)
-    except ET.ParseError as e:
-        return "", {"erro": f"XML invalido: {e}"}, []
+
+    root, erro = parse_xml_seguro(xml_content)
+    if root is None:
+        return "", {"erro": erro}, []
+
     nfe = root.find("nfe:NFe", NS)
     if nfe is None: nfe = root
     importacao = is_nota_importacao(nfe)
@@ -1411,15 +1438,16 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V5.0-FINAL — DE/PARA CFOP→Acumulador + correcao bytes vazios</h4>
+        <h4>V5.0-FINAL — Correcao definitiva do erro "no element found: line 1, column 0"</h4>
         <ul>
-          <li>Corrigido erro <b>"no element found: line 1, column 0"</b>: bytes lidos uma unica vez e guardados antes de qualquer processamento.</li>
-          <li>Guard <b>if not xml_content</b> adicionado em converter_xml e extrair_xmls_importacao_do_zip.</li>
-          <li>DE/PARA CFOP → Acumulador: somente CFOPs 3xxx detectadas nos XMLs sao exibidas.</li>
-          <li>3101→1108 e 3102→1157 fixos; demais ficam em branco para preenchimento manual.</li>
-          <li>Bloqueio de processamento quando ha CFOPs sem acumulador definido.</li>
+          <li><b>parse_xml_seguro()</b>: nova funcao que sanitiza BOM UTF-8/UTF-16, tenta 3 encodings e retorna erro descritivo.</li>
+          <li><b>sanitizar_xml_bytes()</b>: remove BOM antes de qualquer parse — causa raiz do erro em XMLs gerados por sistemas chineses/asiáticos.</li>
+          <li><b>extrair_xmls_importacao_do_zip()</b>: guard de bytes vazios + guarda bytes ja sanitizados no dict.</li>
+          <li><b>converter_xml()</b>: usa parse_xml_seguro em vez de ET.fromstring direto.</li>
+          <li><b>DE/PARA CFOP→Acumulador</b>: 3101→1108 e 3102→1157 fixos, demais em branco para preenchimento manual.</li>
+          <li>Bloqueio de processamento quando CFOP detectada nao tem acumulador definido.</li>
         </ul>
-        <h4>V4.9-FINAL — Correcao definitiva dos campos do registro 1000</h4>
+        <h4>V4.9-FINAL — Correcao dos campos do registro 1000</h4>
         <h4>V4.6-FINAL — CST 73 + Excel + maiusculas</h4>
         </div>
     """, unsafe_allow_html=True)
@@ -1435,27 +1463,29 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    # ── LEITURA DOS BYTES — feita UMA única vez aqui, antes de qualquer uso ──
+    # ── LEITURA ÚNICA DOS BYTES ─────────────────────────────────────────
     arquivos_para_processar = []
     relatorio_zip           = []
     for f in uploaded_files:
         nome_lower = f.name.lower()
         if nome_lower.endswith(".zip"):
-            zip_bytes = f.read()   # lê o ZIP inteiro
+            zip_bytes = f.read()
             xmls_imp, total_xml, ignorados, erros_parse = extrair_xmls_importacao_do_zip(zip_bytes)
-            relatorio_zip.append({"zip": f.name, "total": total_xml,
-                                   "importacao": len(xmls_imp),
-                                   "ignorados": ignorados, "erros": erros_parse})
+            relatorio_zip.append({"zip":f.name,"total":total_xml,
+                                   "importacao":len(xmls_imp),"ignorados":ignorados,"erros":erros_parse})
             for item in xmls_imp:
                 arquivos_para_processar.append(item)
         elif nome_lower.endswith(".xml"):
-            conteudo = f.read()    # lê o XML inteiro — não será lido novamente
-            if conteudo:
-                arquivos_para_processar.append({"nome": f.name, "bytes": conteudo})
+            raw = f.read()
+            if raw:
+                # Sanitiza na entrada — bytes limpos para todo o pipeline
+                arquivos_para_processar.append({
+                    "nome": f.name,
+                    "bytes": sanitizar_xml_bytes(raw)
+                })
             else:
-                relatorio_zip.append({"zip": f.name, "total": 0,
-                                       "importacao": 0, "ignorados": [],
-                                       "erros": [f"{f.name} (arquivo vazio)"]})
+                relatorio_zip.append({"zip":f.name,"total":0,"importacao":0,
+                                       "ignorados":[],"erros":[f"{f.name} (arquivo vazio)"]})
 
     if relatorio_zip:
         st.markdown("#### Relatorio de triagem dos ZIPs")
@@ -1477,7 +1507,7 @@ if uploaded_files:
         st.warning("Nenhum XML de importacao encontrado para processar.")
         st.stop()
 
-    # ── DE/PARA CFOP → ACUMULADOR ──────────────────────────────────────────
+    # ── DE/PARA CFOP → ACUMULADOR ──────────────────────────────────────
     st.markdown("---")
     st.markdown("#### 🔁 DE/PARA: CFOP → Acumulador")
 
@@ -1486,14 +1516,12 @@ if uploaded_files:
     if "cfop_acumulador_map" not in st.session_state:
         st.session_state["cfop_acumulador_map"] = {}
 
-    # Inicializa somente CFOPs detectadas (sem forçar fallback nas que têm padrão "")
     for cfop in cfops_detectadas:
         if cfop not in st.session_state["cfop_acumulador_map"]:
-            st.session_state["cfop_acumulador_map"][cfop] = CFOP_ACUMULADOR_PADRAO.get(cfop, acumulador)
+            st.session_state["cfop_acumulador_map"][cfop] = CFOP_ACUMULADOR_PADRAO.get(cfop, "")
 
     editar_acumuladores = st.toggle(
-        "✏️ Alterar acumuladores padrao",
-        value=False,
+        "✏️ Alterar acumuladores padrao", value=False,
         help="Ative para editar o acumulador de cada CFOP de importacao detectada nos XMLs."
     )
 
@@ -1505,10 +1533,7 @@ if uploaded_files:
 
         if editar_acumuladores:
             if cfops_sem_acum:
-                st.warning(
-                    f"⚠️ {len(cfops_sem_acum)} CFOP(s) sem acumulador: "
-                    f"**{', '.join(cfops_sem_acum)}** — preencha antes de processar."
-                )
+                st.warning(f"⚠️ {len(cfops_sem_acum)} CFOP(s) sem acumulador: **{', '.join(cfops_sem_acum)}** — preencha antes de processar.")
             else:
                 st.success("✅ Todas as CFOPs detectadas possuem acumulador definido.")
 
@@ -1522,30 +1547,24 @@ if uploaded_files:
                 desc   = CFOP_DESCRICAO.get(cfop, "CFOP nao catalogada")
                 padrao = CFOP_ACUMULADOR_PADRAO.get(cfop, None)
                 atual  = st.session_state["cfop_acumulador_map"].get(cfop, "")
-
                 if not atual.strip():
                     status_txt, status_cor = "⚠️ Nao definido", "#C62828"
                 elif padrao is not None and atual == padrao and padrao != "":
                     status_txt, status_cor = "✅ Padrao", "#2E7D32"
                 else:
                     status_txt, status_cor = "✏️ Alterado", "#E65100"
-
                 c1, c2, c3, c4 = st.columns([1, 4, 2, 2])
                 c1.markdown(f"<span style='font-family:monospace;font-weight:bold;color:#FF8000;'>{cfop}</span>", unsafe_allow_html=True)
                 c2.markdown(f"<small style='color:#555;'>{desc}</small>", unsafe_allow_html=True)
-                novo_val = c3.text_input(
-                    label=f"acum_{cfop}", value=atual, placeholder="Ex: 1157",
-                    label_visibility="collapsed", key=f"acum_input_{cfop}", max_chars=10,
-                )
+                novo_val = c3.text_input(label=f"acum_{cfop}", value=atual, placeholder="Ex: 1157",
+                                          label_visibility="collapsed", key=f"acum_input_{cfop}", max_chars=10)
                 novo_mapa[cfop] = novo_val.strip()
                 padrao_label = padrao if (padrao is not None and padrao != "") else "sem padrao"
                 c4.markdown(
                     f"<small style='color:{status_cor};font-weight:bold;'>{status_txt}</small>"
                     f"<br><small style='color:#888;'>padrao: {padrao_label}</small>",
-                    unsafe_allow_html=True
-                )
+                    unsafe_allow_html=True)
             st.session_state["cfop_acumulador_map"] = novo_mapa
-
             st.markdown("")
             col_reset, _ = st.columns([2, 6])
             with col_reset:
@@ -1554,12 +1573,8 @@ if uploaded_files:
                         st.session_state["cfop_acumulador_map"][cfop] = CFOP_ACUMULADOR_PADRAO.get(cfop, "")
                     st.rerun()
         else:
-            # Modo leitura
             if cfops_sem_acum:
-                st.warning(
-                    f"⚠️ {len(cfops_sem_acum)} CFOP(s) sem acumulador: "
-                    f"**{', '.join(cfops_sem_acum)}** — ative '✏️ Alterar' para preencher."
-                )
+                st.warning(f"⚠️ {len(cfops_sem_acum)} CFOP(s) sem acumulador: **{', '.join(cfops_sem_acum)}** — ative '✏️ Alterar' para preencher.")
             h1, h2, h3, h4 = st.columns([1, 4, 2, 2])
             h1.markdown("**CFOP**"); h2.markdown("**Descricao**")
             h3.markdown("**Acumulador**"); h4.markdown("**Status**")
@@ -1586,9 +1601,8 @@ if uploaded_files:
         st.caption("Nenhuma CFOP de importacao (3xxx) detectada nos arquivos carregados.")
 
     st.markdown("---")
-    # ── FIM DE/PARA ─────────────────────────────────────────────────────────
 
-    # ── BLOQUEIO se houver CFOPs sem acumulador ──────────────────────────────
+    # ── BLOQUEIO se CFOPs sem acumulador ───────────────────────────────
     mapa_acum = st.session_state.get("cfop_acumulador_map", {})
     cfops_sem_acum_final = [
         c for c in cfops_detectadas
@@ -1596,48 +1610,47 @@ if uploaded_files:
     ]
     if cfops_sem_acum_final:
         st.error(
-            f"❌ Nao e possivel processar: as CFOPs **{', '.join(cfops_sem_acum_final)}** "
-            f"nao possuem acumulador definido. Ative '✏️ Alterar acumuladores padrao' e preencha."
+            f"❌ Nao e possivel processar: CFOPs **{', '.join(cfops_sem_acum_final)}** "
+            f"sem acumulador. Ative '✏️ Alterar acumuladores padrao' e preencha."
         )
         st.stop()
 
-    # ── PROCESSAMENTO ────────────────────────────────────────────────────────
+    # ── PROCESSAMENTO ───────────────────────────────────────────────────
     all_lines = []; all_resumos = []; all_dados_xls = []; erros = []
     progress = st.progress(0, text="Processando arquivos...")
 
     for i, arq in enumerate(arquivos_para_processar):
-        # bytes já estão em arq["bytes"] — não há segundo f.read()
-        try:
-            root_xls = ET.fromstring(arq["bytes"])
-            nfe_xls  = root_xls.find("nfe:NFe", NS) or root_xls
-            aliq_pis_p, aliq_cof_p = calcular_aliquotas_padrao_nota(nfe_xls)
-            all_dados_xls.extend(
-                extrair_dados_impostos_itens(nfe_xls, arq["nome"], aliq_pis_p, aliq_cof_p)
-            )
-        except Exception:
-            pass
-
-        # Resolve acumulador pela CFOP do primeiro item da nota
-        acumulador_nota = acumulador  # fallback da sidebar (CFOPs desconhecidas)
-        try:
-            root_tmp = ET.fromstring(arq["bytes"])
-            nfe_tmp  = root_tmp.find("nfe:NFe", NS) or root_tmp
-            det_list_tmp = nfe_tmp.findall("nfe:infNFe/nfe:det", NS)
-            if det_list_tmp:
-                cfop_primeiro = get_text(
-                    det_list_tmp[0].find("nfe:prod", NS), "nfe:CFOP"
-                ).strip()
-                acumulador_nota = resolver_acumulador_por_cfop(
-                    cfop_primeiro, mapa_acum, acumulador
+        # bytes já sanitizados — parse direto, sem segundo f.read()
+        root_tmp, _ = parse_xml_seguro(arq["bytes"])
+        if root_tmp is not None:
+            nfe_tmp = root_tmp.find("nfe:NFe", NS) or root_tmp
+            try:
+                aliq_pis_p, aliq_cof_p = calcular_aliquotas_padrao_nota(nfe_tmp)
+                all_dados_xls.extend(
+                    extrair_dados_impostos_itens(nfe_tmp, arq["nome"], aliq_pis_p, aliq_cof_p)
                 )
-        except Exception:
-            pass
+            except Exception:
+                pass
+
+            # Resolve acumulador pela CFOP do primeiro item
+            acumulador_nota = acumulador
+            try:
+                det_list_tmp = nfe_tmp.findall("nfe:infNFe/nfe:det", NS)
+                if det_list_tmp:
+                    cfop_primeiro = get_text(
+                        det_list_tmp[0].find("nfe:prod", NS), "nfe:CFOP"
+                    ).strip()
+                    acumulador_nota = resolver_acumulador_por_cfop(
+                        cfop_primeiro, mapa_acum, acumulador
+                    )
+            except Exception:
+                pass
+        else:
+            acumulador_nota = acumulador
 
         texto, resumo, _ = converter_xml(
-            arq["bytes"],
-            cnpj_fallback=cnpj_fallback,
-            acumulador=acumulador_nota,
-            especie=especie,
+            arq["bytes"], cnpj_fallback=cnpj_fallback,
+            acumulador=acumulador_nota, especie=especie,
             incluir_0000=inc_0000, incluir_0020=inc_0020,
             incluir_0100=inc_0100, incluir_0110=inc_0110,
             incluir_1010=inc_1010, incluir_1015=inc_1015,
@@ -1664,13 +1677,13 @@ if uploaded_files:
 
     if all_resumos:
         st.success(f"{len(all_resumos)} arquivo(s) convertido(s) com sucesso!")
-        cnpjs_unicos = list({r["CNPJ Empresa"]: r for r in all_resumos}.values())
+        cnpjs_unicos = list({r["CNPJ Empresa"]:r for r in all_resumos}.values())
         if cnpjs_unicos:
             st.markdown("#### Empresa / Fornecedor")
             cols = st.columns(min(len(cnpjs_unicos), 4))
             for idx, r in enumerate(cnpjs_unicos[:4]):
-                is_imp   = r.get("Importacao", "Nao") == "Sim"
-                cor      = "#1565C0" if is_imp else "#FF8000"
+                is_imp = r.get("Importacao","Nao") == "Sim"
+                cor    = "#1565C0" if is_imp else "#FF8000"
                 pais_info = f" | Pais Dom.: {r.get('Cod Pais (Dom)','')}" if is_imp else ""
                 with cols[idx]:
                     st.markdown(
@@ -1684,15 +1697,12 @@ if uploaded_files:
                         f'<br><small>Acumulador: <b>{r.get("Acumulador","")}</b></small>'
                         f'<br><small>Chave: {r.get("Chave NF-e","")[:22]}...</small>'
                         f'</div>', unsafe_allow_html=True)
-
         st.markdown("---")
         with st.expander("Resumo das notas processadas", expanded=True):
             st.dataframe(all_resumos, use_container_width=True)
-
         saida_final = "\n".join(all_lines)
         with st.expander("Preview do arquivo gerado (primeiras 80 linhas)"):
             st.code("\n".join(saida_final.split("\n")[:80]), language="text")
-
         st.markdown("---")
         saida_ansi = encode_ansi(saida_final)
         col1, col2 = st.columns(2)
@@ -1711,25 +1721,19 @@ if uploaded_files:
                     use_container_width=True)
             elif not EXCEL_DISPONIVEL:
                 st.warning("openpyxl nao instalado. Execute: pip install openpyxl")
-
         st.markdown("---")
         st.markdown("#### Estatisticas")
-        c1, c2, c3, c4, c5 = st.columns(5)
+        c1,c2,c3,c4,c5 = st.columns(5)
         c1.metric("Notas",  len(all_resumos))
-        c2.metric("Itens",  sum(r.get("Itens", 0) for r in all_resumos))
+        c2.metric("Itens",  sum(r.get("Itens",0) for r in all_resumos))
         total_linhas = len([l for l in saida_final.split("\n") if l.startswith("|")])
         c3.metric("Linhas geradas", total_linhas)
         c4.metric("Erros", len(erros))
         try:
-            total_nf = sum(
-                float(r.get("vNF", "0").replace(",", "."))
-                for r in all_resumos if r.get("vNF")
-            )
-            c5.metric("Total NF (R$)",
-                      f"{total_nf:,.2f}".replace(",","X").replace(".",",").replace("X","."))
+            total_nf = sum(float(r.get("vNF","0").replace(",",".")) for r in all_resumos if r.get("vNF"))
+            c5.metric("Total NF (R$)", f"{total_nf:,.2f}".replace(",","X").replace(".",",").replace("X","."))
         except Exception:
             c5.metric("Total NF", "-")
-
 else:
     st.info("Faca o upload de um ou mais arquivos XML ou de um arquivo ZIP contendo XMLs de NF-e.")
 
