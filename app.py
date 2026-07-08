@@ -836,168 +836,101 @@ def gerar_registro_0000(cnpj_empresa: str) -> str:
 
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
-        id_estrangeiro = get_text(dest, "nfe:idEstrangeiro").strip()
-        inscricao      = id_estrangeiro
-        razao          = get_text(dest, "nfe:xNome")[:150].upper()
-        fantasia       = razao[:40]
-        ender          = dest.find("nfe:enderDest", NS)
-        logradouro     = get_text(ender, "nfe:xLgr")                 if ender is not None else ""
-        numero         = somente_numeros(get_text(ender, "nfe:nro"))  if ender is not None else ""
-        complemento    = get_text(ender, "nfe:xCpl")                 if ender is not None else ""
-        bairro         = get_text(ender, "nfe:xBairro")              if ender is not None else ""
-        cod_mun        = ""
-        cep_raw        = get_text(ender, "nfe:CEP") if ender is not None else ""
-        cep            = "" if cep_raw in ("00000000", "") else cep_raw
-        c_pais_xml     = get_text(ender, "nfe:cPais") if ender is not None else ""
-        x_pais_xml     = get_text(ender, "nfe:xPais") if ender is not None else ""
-        cod_pais       = resolver_codigo_pais_dominio(c_pais_xml, x_pais_xml)
-        uf_campo       = "EX"
-        ie             = ""
-        regime         = "N"
-        contrib        = "N"
+        # ── Fornecedor estrangeiro ──────────────────────────────────────
+        # CNPJ/CPF = VAZIO — estrangeiro não tem inscrição brasileira
+        inscricao   = ""
+        razao       = get_text(dest, "nfe:xNome")[:150].upper()
+        fantasia    = razao[:40]
+        ender       = dest.find("nfe:enderDest", NS)
+        logradouro  = get_text(ender, "nfe:xLgr")                 if ender is not None else ""
+        numero      = somente_numeros(get_text(ender, "nfe:nro"))  if ender is not None else ""
+        complemento = get_text(ender, "nfe:xCpl")                 if ender is not None else ""
+        bairro      = get_text(ender, "nfe:xBairro")              if ender is not None else ""
+        cod_mun     = ""
+        cep_raw     = get_text(ender, "nfe:CEP") if ender is not None else ""
+        cep         = "" if cep_raw in ("00000000", "") else cep_raw
+        c_pais_xml  = get_text(ender, "nfe:cPais") if ender is not None else ""
+        x_pais_xml  = get_text(ender, "nfe:xPais") if ender is not None else ""
+        cod_pais    = resolver_codigo_pais_dominio(c_pais_xml, x_pais_xml)
+        uf_campo    = "EX"
+        ie          = ""
+        regime      = "N"
+        contrib     = "N"
     else:
-        inscricao      = get_text(emit, "nfe:CNPJ")
-        razao          = get_text(emit, "nfe:xNome")[:150].upper()
-        fantasia_raw   = get_text(emit, "nfe:xFant")
-        fantasia       = fantasia_raw[:40].upper() if fantasia_raw else razao[:40]
-        ender          = emit.find("nfe:enderEmit", NS)
-        logradouro     = get_text(ender, "nfe:xLgr")                 if ender is not None else ""
-        numero         = somente_numeros(get_text(ender, "nfe:nro"))  if ender is not None else ""
-        complemento    = get_text(ender, "nfe:xCpl")                 if ender is not None else ""
-        bairro         = get_text(ender, "nfe:xBairro")              if ender is not None else ""
-        cod_mun        = somente_numeros(get_text(ender, "nfe:cMun")) if ender is not None else ""
-        cep            = get_text(ender, "nfe:CEP")                  if ender is not None else ""
-        uf_campo       = get_text(ender, "nfe:UF")                   if ender is not None else ""
-        cod_pais       = ""
-        ie             = get_text(emit, "nfe:IE")
-        crt            = get_text(emit, "nfe:CRT")
-        regime         = {"1": "M", "2": "E", "3": "N"}.get(crt, "N")
-        contrib        = "S" if ie and ie.upper() not in ("ISENTO", "NAO CONTRIBUINTE", "") else "N"
+        # ── Fornecedor nacional ─────────────────────────────────────────
+        inscricao    = get_text(emit, "nfe:CNPJ")
+        razao        = get_text(emit, "nfe:xNome")[:150].upper()
+        fantasia_raw = get_text(emit, "nfe:xFant")
+        fantasia     = fantasia_raw[:40].upper() if fantasia_raw else razao[:40]
+        ender        = emit.find("nfe:enderEmit", NS)
+        logradouro   = get_text(ender, "nfe:xLgr")                 if ender is not None else ""
+        numero       = somente_numeros(get_text(ender, "nfe:nro"))  if ender is not None else ""
+        complemento  = get_text(ender, "nfe:xCpl")                 if ender is not None else ""
+        bairro       = get_text(ender, "nfe:xBairro")              if ender is not None else ""
+        cod_mun      = somente_numeros(get_text(ender, "nfe:cMun")) if ender is not None else ""
+        cep          = get_text(ender, "nfe:CEP")                  if ender is not None else ""
+        uf_campo     = get_text(ender, "nfe:UF")                   if ender is not None else ""
+        cod_pais     = ""
+        ie           = get_text(emit, "nfe:IE")
+        crt          = get_text(emit, "nfe:CRT")
+        regime       = {"1": "M", "2": "E", "3": "N"}.get(crt, "N")
+        contrib      = "S" if ie and ie.upper() not in ("ISENTO", "NAO CONTRIBUINTE", "") else "N"
+
     c = [""] * 33
-    c[0]="0020"; c[1]=inscricao; c[2]=razao; c[3]=fantasia
-    c[4]=logradouro; c[5]=numero; c[6]=complemento; c[7]=bairro
-    c[8]=cod_mun; c[9]=uf_campo; c[10]=cod_pais; c[11]=cep
-    c[12]=ie; c[13]=""; c[14]=""; c[15]=""
-    c[16]=""; c[17]=""; c[18]=""; c[19]=""
-    c[20]=""; c[21]="N"; c[22]="7"; c[23]=regime
-    c[24]=contrib; c[25]=""; c[26]=""; c[27]=""
-    c[28]=""; c[29]="N"; c[30]="N"; c[31]=""; c[32]=""
+    c[0]  = "0020"
+    c[1]  = inscricao    # "" para estrangeiro | CNPJ para nacional
+    c[2]  = razao
+    c[3]  = fantasia
+    c[4]  = logradouro
+    c[5]  = numero
+    c[6]  = complemento
+    c[7]  = bairro
+    c[8]  = cod_mun      # "" para estrangeiro
+    c[9]  = uf_campo     # "EX" para importação
+    c[10] = cod_pais     # código Domínio (ex: 45 = China)
+    c[11] = cep
+    c[12] = ie
+    c[13] = ""; c[14] = ""; c[15] = ""
+    c[16] = ""; c[17] = ""; c[18] = ""; c[19] = ""
+    c[20] = ""; c[21] = "N"; c[22] = "7"; c[23] = regime
+    c[24] = contrib
+    c[25] = ""; c[26] = ""; c[27] = ""
+    c[28] = ""; c[29] = "N"; c[30] = "N"; c[31] = ""
+    c[32] = ""
     return pipe_join(c)
 
-def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
-    prod      = det.find("nfe:prod", NS)
-    cod_prod  = get_text(prod,"nfe:cProd")[:14]
-    descricao = get_text(prod,"nfe:xProd").upper()
-    ncm       = get_text(prod,"nfe:NCM")
-    unidade   = get_text(prod,"nfe:uCom")
-    val_unit  = get_text(prod,"nfe:vUnCom")
-    cest      = get_text(prod,"nfe:CEST")
-    cfop      = get_text(prod,"nfe:CFOP")
-    cod_grupo = detectar_grupo(cfop, ncm, grupo_padrao)
-    imposto   = det.find("nfe:imposto", NS)
-    cst_icms = aliq_icms = aliq_ipi = ""
-    if imposto is not None:
-        for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40","ICMS51","ICMS60",
-                   "ICMS70","ICMS90","ICMSSN101","ICMSSN102","ICMSSN201",
-                   "ICMSSN202","ICMSSN500","ICMSSN900"]:
-            node = imposto.find(f"nfe:ICMS/nfe:{tp}", NS)
-            if node is not None:
-                cst_icms  = get_text(node,"nfe:CST") or get_text(node,"nfe:CSOSN")
-                aliq_icms = fmt_decimal(get_text(node,"nfe:pICMS"))
-                break
-        ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
-        if ipi_trib is not None:
-            aliq_ipi = fmt_decimal(get_text(ipi_trib,"nfe:pIPI"))
-    c = [""] * 91
-    c[0]="0100"; c[1]=cod_prod; c[2]=descricao; c[3]=""; c[4]=ncm; c[5]=""; c[6]=""; c[7]=""
-    c[8]=str(cod_grupo); c[9]=unidade; c[10]="N"; c[11]="O"; c[12]=""; c[13]=""; c[14]=""; c[15]="N"
-    c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""; c[20]=cst_icms; c[21]=aliq_icms
-    c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
-    for i in range(26,74): c[i]=""
-    c[74]=DATA_CADASTRO_FIXO
-    for i in range(75,88): c[i]=""
-    c[88]=cest; c[89]=""; c[90]=""
-    return pipe_join(c)
-
-def extrair_pis_cofins(det, importacao: bool = False,
-                        aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
-                        tem_direito_credito: bool = True) -> dict:
-    imposto = det.find("nfe:imposto", NS)
-    res = {"cst_e":"","aliq_pis_e":"","aliq_cof_e":"","cst_s":"",
-           "aliq_pis_s":"","aliq_cof_s":"","class_trib":"","cst_cof_e":""}
-    if imposto is None:
-        return res
-    pis_node = imposto.find("nfe:PIS", NS)
-    if pis_node is not None:
-        for pt in ["PISAliq","PISQtde","PISNT","PISOutr"]:
-            pn = pis_node.find(f"nfe:{pt}", NS)
-            if pn is not None:
-                cst_xml       = str(get_text(pn,"nfe:CST")).strip().zfill(2)
-                aliq          = get_text(pn,"nfe:pPIS") or get_text(pn,"nfe:vAliqProd")
-                res["cst_e"]      = obter_cst_entrada(cst_xml, tem_direito_credito)
-                res["aliq_pis_e"] = fmt_decimal(aliq, 4)
-                break
-    cof_node = imposto.find("nfe:COFINS", NS)
-    if cof_node is not None:
-        for ct in ["COFINSAliq","COFINSQtde","COFINSNT","COFINSOutr"]:
-            cn = cof_node.find(f"nfe:{ct}", NS)
-            if cn is not None:
-                cst_xml           = str(get_text(cn,"nfe:CST")).strip().zfill(2)
-                aliq              = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd")
-                res["aliq_cof_e"] = fmt_decimal(aliq, 4)
-                res["cst_cof_e"]  = obter_cst_entrada(cst_xml, tem_direito_credito)
-                break
-    res["cst_s"]      = CST_ENTRADA_SAIDA.get(res["cst_e"], "")
-    res["aliq_pis_s"] = res["aliq_pis_e"]
-    res["aliq_cof_s"] = res["aliq_cof_e"]
-    ibs_node = imposto.find("nfe:IBSCBS", NS)
-    if ibs_node is not None:
-        res["class_trib"] = get_text(ibs_node,"nfe:cClassTrib")
-    return res
-
-def gerar_registro_0110(det, importacao: bool = False,
-                         aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
-                         tem_direito_credito: bool = True) -> str:
-    pc = extrair_pis_cofins(det, importacao=importacao,
-                             aliq_pis_pad=aliq_pis_pad, aliq_cof_pad=aliq_cof_pad,
-                             tem_direito_credito=tem_direito_credito)
-    ct = pc["class_trib"]
-    vinculo_credito = "08" if importacao else ""
-    c = [""] * 70
-    c[0]="0110"; c[1]=DATA_CADASTRO_FIXO; c[2]=pc["cst_e"]; c[3]=vinculo_credito
-    c[4]="01"; c[5]="N"; c[6]="N"; c[7]=pc["aliq_pis_e"]; c[8]=pc["aliq_cof_e"]
-    c[9]="N"; c[10]="N"; c[11]=""; c[12]=""; c[13]=""; c[14]=""
-    c[15]=pc["cst_s"]; c[16]="N"; c[17]=""; c[18]=""; c[19]=""
-    c[20]="N"; c[21]=pc["aliq_pis_s"]; c[22]=pc["aliq_cof_s"]
-    c[23]="N"; c[24]="N"
-    for i in range(25,40): c[i]=""
-    c[40]="N"; c[41]="N"; c[42]="N"; c[43]=""; c[44]="N"; c[45]=""; c[46]="N"
-    for i in range(47,66): c[i]=""
-    c[66]=ct; c[67]=ct; c[68]="N"; c[69]="N"
-    return pipe_join(c)
 
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
-                        acumulador: str = "1157", especie: str = "36",
+                        acumulador: str = "1157",
+                        especie: str = "36",
                         importacao: bool = False) -> str:
     ide   = nfe_root.find("nfe:infNFe/nfe:ide", NS)
     emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
     dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
-    if importacao and dest is not None:
-        cnpj_forn = get_text(dest, "nfe:idEstrangeiro").strip()
+
+    if importacao:
+        # CNPJ do fornecedor = VAZIO para estrangeiro
+        # O Domínio não valida CNPJ de fornecedor estrangeiro —
+        # ele identifica pelo nome + UF=EX cadastrado no 0020
+        cnpj_forn = ""
         ie_forn   = ""
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ") if emit is not None else ""
         ie_forn   = get_text(emit, "nfe:IE")   if emit is not None else ""
-    emitente_nf = "T"
+
+    emitente_nf = "T"   # sempre Terceiros para NF de entrada
+
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
     dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
     c_mun_fg = get_text(ide, "nfe:cMunFG")
+
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     cfop_first = ""
     if det_list:
         cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
+
     v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
     v_pis    = fmt_decimal(get_text(total, "nfe:vPIS"))
     v_cofins = fmt_decimal(get_text(total, "nfe:vCOFINS"))
@@ -1008,44 +941,80 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     v_seg    = fmt_decimal(get_text(total, "nfe:vSeg"))
     v_outro  = fmt_decimal(get_text(total, "nfe:vOutro"))
     v_icms_d = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
-    # ── V5.3: usa extrair_chave_nfe com cascata robusta ──────────────────
+
     chave = extrair_chave_nfe(nfe_root)
+
     transp        = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     mod_frete_cod = get_text(transp, "nfe:modFrete")
     mod_frete     = {"0":"C","1":"F","2":"S","3":"T","4":"R","5":"D","9":"S"}.get(mod_frete_cod,"C")
+
     inf_adic  = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
     obs_fisco = ""
     if inf_adic is not None:
         obs_fisco = get_text(inf_adic, "nfe:infAdFisco")[:300]
+
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
         if di_node is not None:
             n_di = get_text(di_node, "nfe:nDI")
+
     c = [""] * 98
-    c[0]="1000"; c[1]=especie; c[2]=cnpj_forn; c[3]=""; c[4]=acumulador
-    c[5]=cfop_first; c[6]=""; c[7]=nNF; c[8]=serie; c[9]=""
-    c[10]=dhEmi; c[11]=dhEmi; c[12]=v_nf; c[13]=""; c[14]=obs_fisco
-    c[15]=mod_frete; c[16]=emitente_nf
-    c[17]=""; c[18]=""; c[19]=""
-    c[20]=""; c[21]=""; c[22]=""; c[23]=""; c[24]=""
-    c[25]=v_frete; c[26]=v_seg; c[27]=v_outro; c[28]=v_pis; c[29]=""
-    c[30]=v_cofins; c[31]=""; c[32]=""; c[33]=""; c[34]=""
-    c[35]=""; c[36]=""; c[37]=""; c[38]=v_prod; c[39]=c_mun_fg
-    c[40]="0"; c[41]=""; c[42]=""; c[43]=ie_forn; c[44]=""
-    c[45]=""; c[46]=""; c[47]=""; c[48]=""; c[49]=""
-    c[50]=""; c[51]=n_di; c[52]="N"; c[53]=chave; c[54]=""
-    c[55]=""; c[56]=""; c[57]=""; c[58]=""
-    c[59]="1" if importacao else ""
-    c[60]=""; c[61]=""; c[62]=""; c[63]=""; c[64]=""
-    c[65]=""; c[66]=""; c[67]=""; c[68]=""
-    c[69]="1" if importacao else ""
-    c[70]=""; c[71]=""; c[72]=""; c[73]=""; c[74]=""
-    c[75]=""; c[76]=""; c[77]=""; c[78]=""; c[79]=""
-    c[80]=""; c[81]=""; c[82]=""; c[83]=""; c[84]=""
-    c[85]=""; c[86]=""; c[87]=""; c[88]=""
-    c[89]=v_ipi; c[90]=v_st; c[91]=""; c[92]=""; c[93]=""
-    c[94]=""; c[95]=""; c[96]=v_icms_d; c[97]=""
+    c[0]  = "1000"
+    c[1]  = especie
+    c[2]  = cnpj_forn      # "" para importação | CNPJ emit para nacional
+    c[3]  = ""
+    c[4]  = acumulador
+    c[5]  = cfop_first     # 3101 / 3102
+    c[6]  = ""
+    c[7]  = nNF
+    c[8]  = serie
+    c[9]  = ""
+    c[10] = dhEmi
+    c[11] = dhEmi
+    c[12] = v_nf
+    c[13] = ""
+    c[14] = obs_fisco
+    c[15] = mod_frete
+    c[16] = emitente_nf    # "T" — sempre Terceiros para NF de entrada
+    c[17] = ""; c[18] = ""; c[19] = ""
+    c[20] = ""; c[21] = ""; c[22] = ""; c[23] = ""; c[24] = ""
+    c[25] = v_frete
+    c[26] = v_seg
+    c[27] = v_outro
+    c[28] = v_pis
+    c[29] = ""
+    c[30] = v_cofins
+    c[31] = ""; c[32] = ""; c[33] = ""; c[34] = ""
+    c[35] = ""; c[36] = ""; c[37] = ""
+    c[38] = v_prod
+    c[39] = c_mun_fg
+    c[40] = "0"
+    c[41] = ""
+    c[42] = ""
+    c[43] = ie_forn        # "" para importação | IE emit para nacional
+    c[44] = ""
+    c[45] = ""; c[46] = ""; c[47] = ""; c[48] = ""; c[49] = ""
+    c[50] = ""
+    c[51] = n_di           # número da DI
+    c[52] = "N"
+    c[53] = chave
+    c[54] = ""
+    c[55] = ""; c[56] = ""; c[57] = ""; c[58] = ""
+    c[59] = "1" if importacao else ""
+    c[60] = ""; c[61] = ""; c[62] = ""; c[63] = ""; c[64] = ""
+    c[65] = ""; c[66] = ""; c[67] = ""; c[68] = ""
+    c[69] = "1" if importacao else ""
+    c[70] = ""; c[71] = ""; c[72] = ""; c[73] = ""; c[74] = ""
+    c[75] = ""; c[76] = ""; c[77] = ""; c[78] = ""; c[79] = ""
+    c[80] = ""; c[81] = ""; c[82] = ""; c[83] = ""; c[84] = ""
+    c[85] = ""; c[86] = ""; c[87] = ""; c[88] = ""
+    c[89] = v_ipi
+    c[90] = v_st
+    c[91] = ""; c[92] = ""; c[93] = ""
+    c[94] = ""; c[95] = ""
+    c[96] = v_icms_d
+    c[97] = ""
     return pipe_join(c)
 
 def gerar_registros_1010(nfe_root) -> list:
