@@ -13,8 +13,8 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-# ── V5.4-FINAL: CNPJ vazio para fornecedor estrangeiro ───────────────────────
-VERSAO = "V5.4-FINAL"
+# ── V5.5-FINAL: sanitizar | em campos de texto livre ─────────────────────────
+VERSAO = "V5.5-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -228,7 +228,7 @@ PAISES_NOME_PARA_DOMINIO = {
     "CONGO":54,"COOK":56,"COREIA DO NORTE":57,"COREIA DO SUL":58,"COSTA DO MARFIM":59,
     "COSTA RICA":60,"KUWAIT":61,"CROACIA":62,"CUBA":63,"DINAMARCA":64,"DJIBUTI":65,
     "DOMINICA":66,"EGITO":67,"EL SALVADOR":68,"EMIRADOS ARABES UNIDOS":69,"EQUADOR":70,
-    "ERITREIA":71,"ESCOCIA":72,"ESLOVACA":73,"ESLOVENIA":74,"ESPANHA":75,
+    "ERITREIA":71,"ESCOCIA":72,"ESLOVACA":73,"ESLOVENIE":74,"ESPANHA":75,
     "ESTADOS UNIDOS":76,"ESTONIA":77,"ETIOPIA":78,"FALKLAND":79,"FEROE":80,"FIJI":81,
     "FILIPINAS":82,"FINLANDIA":83,"FORMOSA":84,"TAIWAN":84,"FRANCA":85,"GABAO":86,
     "GALES":87,"GAMBIA":88,"GANA":89,"GEORGIA":90,"GIBRALTAR":91,"GRA-BRETANHA":92,
@@ -279,6 +279,12 @@ def sanitizar_xml_bytes(raw: bytes) -> bytes:
     elif raw.startswith(b'\xff\xfe') or raw.startswith(b'\xfe\xff'):
         raw = raw[2:]
     return raw
+
+# ── V5.5: nova função — remove | \n \r de campos de texto livre ──────────────
+def sanitizar_texto_livre(texto: str) -> str:
+    if not texto:
+        return texto
+    return texto.replace("|", "/").replace("\n", " ").replace("\r", " ")
 
 def resolver_codigo_pais_dominio(c_pais_xml: str, x_pais_xml: str) -> str:
     c_norm = (c_pais_xml or "").strip().zfill(4)
@@ -794,10 +800,9 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
 def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
-# ── V5.4: inscricao = "" para estrangeiro (campo CNPJ/CPF vazio) ─────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
-        inscricao   = ""          # V5.4: VAZIO — estrangeiro não tem CNPJ brasileiro
+        inscricao   = ""
         razao       = get_text(dest, "nfe:xNome")[:150].upper()
         fantasia    = razao[:40]
         ender       = dest.find("nfe:enderDest", NS)
@@ -938,7 +943,7 @@ def gerar_registro_0110(det, importacao: bool = False,
     c[66]=ct; c[67]=ct; c[68]="N"; c[69]="N"
     return pipe_join(c)
 
-# ── V5.4: cnpj_forn = "" para importação ─────────────────────────────────────
+# ── V5.5: gerar_registro_1000 com sanitizar_texto_livre no obs_fisco ──────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157", especie: str = "36",
                         importacao: bool = False) -> str:
@@ -947,7 +952,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     if importacao:
-        cnpj_forn = ""   # V5.4: VAZIO — estrangeiro não tem CNPJ brasileiro
+        cnpj_forn = ""
         ie_forn   = ""
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ") if emit is not None else ""
@@ -978,7 +983,8 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     inf_adic  = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
     obs_fisco = ""
     if inf_adic is not None:
-        obs_fisco = get_text(inf_adic, "nfe:infAdFisco")[:300]
+        # ── V5.5: sanitiza | antes de truncar ────────────────────────────────
+        obs_fisco = sanitizar_texto_livre(get_text(inf_adic, "nfe:infAdFisco"))[:300]
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
@@ -1010,27 +1016,35 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     c[94]=""; c[95]=""; c[96]=v_icms_d; c[97]=""
     return pipe_join(c)
 
+# ── V5.5: sanitizar_texto_livre aplicado antes de fatiar em blocos ────────────
 def gerar_registros_1010(nfe_root) -> list:
     linhas = []
     inf_adic = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
     if inf_adic is None:
         return linhas
-    for txt, cod in [(get_text(inf_adic,"nfe:infAdFisco"),"1"),
-                     (get_text(inf_adic,"nfe:infCpl"),"2")]:
-        if txt:
-            for bloco in [txt[i:i+300] for i in range(0,len(txt),300)]:
+    for txt_raw, cod in [
+        (get_text(inf_adic, "nfe:infAdFisco"), "1"),
+        (get_text(inf_adic, "nfe:infCpl"),     "2"),
+    ]:
+        if txt_raw:
+            txt = sanitizar_texto_livre(txt_raw)
+            for bloco in [txt[i:i+300] for i in range(0, len(txt), 300)]:
                 linhas.append(pipe_join(["1010", cod, bloco]))
     return linhas
 
+# ── V5.5: sanitizar_texto_livre aplicado antes de fatiar em blocos ────────────
 def gerar_registros_1015(nfe_root) -> list:
     linhas = []
     inf_adic = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
     if inf_adic is None:
         return linhas
-    for txt, cod in [(get_text(inf_adic,"nfe:infAdFisco"),"1"),
-                     (get_text(inf_adic,"nfe:infCpl"),"2")]:
-        if txt:
-            for bloco in [txt[i:i+300] for i in range(0,len(txt),300)]:
+    for txt_raw, cod in [
+        (get_text(inf_adic, "nfe:infAdFisco"), "1"),
+        (get_text(inf_adic, "nfe:infCpl"),     "2"),
+    ]:
+        if txt_raw:
+            txt = sanitizar_texto_livre(txt_raw)
+            for bloco in [txt[i:i+300] for i in range(0, len(txt), 300)]:
                 linhas.append(pipe_join(["1015", cod, bloco]))
     return linhas
 
@@ -1547,15 +1561,17 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V5.5-FINAL — Sanitizacao de pipe (|) em campos de texto livre</h4>
+        <ul>
+          <li><b>sanitizar_texto_livre()</b>: nova funcao — substitui | por / e remove \\n/\\r.</li>
+          <li><b>gerar_registros_1010</b>: aplica sanitizacao antes de fatiar em blocos de 300 chars.</li>
+          <li><b>gerar_registros_1015</b>: idem.</li>
+          <li><b>gerar_registro_1000</b>: aplica sanitizacao no campo obs_fisco (campo 14).</li>
+        </ul>
         <h4>V5.4-FINAL — CNPJ vazio para fornecedor estrangeiro</h4>
         <ul>
-          <li><b>gerar_registro_0020</b>: campo c[1] (CNPJ/CPF) = "" para importacao.
-              Estrangeiro nao tem inscricao brasileira. O Dominio identifica pelo
-              nome + UF=EX + codigo do pais.</li>
+          <li><b>gerar_registro_0020</b>: campo c[1] (CNPJ/CPF) = "" para importacao.</li>
           <li><b>gerar_registro_1000</b>: campo c[2] (cnpj_forn) = "" para importacao.</li>
-          <li><b>gerar_registro_0100 / gerar_registro_1030</b>: guard contra prod=None
-              evitando AttributeError em XMLs com estrutura inesperada.</li>
-          <li><b>converter_xml</b>: filtra registros vazios ("") antes de append.</li>
         </ul>
         <h4>V5.3-FINAL — Chave NF-e cascata robusta + normalizar_nfe_root</h4>
         <h4>V5.2-FINAL — emitente_nf="T" sempre para NF de entrada</h4>
