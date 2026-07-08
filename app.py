@@ -13,8 +13,7 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-# ── V5.5-FINAL: sanitizar | em campos de texto livre ─────────────────────────
-VERSAO = "V5.5-FINAL"
+VERSAO = "V5.6-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -146,18 +145,6 @@ def obter_cst_entrada(cst_norm: str, tem_direito_credito: bool) -> str:
         return CST_ENTRADA_SAIDA.get(cst_norm, cst_norm)
     return cst_norm
 
-def cst_pis_efetivo(cst_xml: str, aliq_item: float, aliq_padrao: float) -> str:
-    cst_norm = str(cst_xml).strip().zfill(2)
-    if aliq_padrao > 0 and aliq_item > 0 and aliq_item < aliq_padrao:
-        return "73"
-    return cst_norm
-
-def cst_cof_efetivo(cst_xml: str, aliq_item: float, aliq_padrao: float) -> str:
-    cst_norm = str(cst_xml).strip().zfill(2)
-    if aliq_padrao > 0 and aliq_item > 0 and aliq_item < aliq_padrao:
-        return "73"
-    return cst_norm
-
 CFOP_ACUMULADOR_PADRAO = {
     "3101": "1108", "3102": "1157", "3126": "", "3127": "",
     "3201": "", "3202": "", "3211": "", "3251": "", "3301": "",
@@ -280,8 +267,8 @@ def sanitizar_xml_bytes(raw: bytes) -> bytes:
         raw = raw[2:]
     return raw
 
-# ── V5.5: nova função — remove | \n \r de campos de texto livre ──────────────
 def sanitizar_texto_livre(texto: str) -> str:
+    """Remove caracteres que quebram o leiaute pipe-delimitado."""
     if not texto:
         return texto
     return texto.replace("|", "/").replace("\n", " ").replace("\r", " ")
@@ -797,9 +784,14 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     ws2.freeze_panes="A3"
     buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
 
+# ─────────────────────────────────────────────
+# REGISTROS
+# ─────────────────────────────────────────────
+
 def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
+# ── V5.6: campo 19 (Data cadastro) = DATA_CADASTRO_FIXO ──────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
         inscricao   = ""
@@ -843,7 +835,8 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     c[4]=logradouro; c[5]=numero; c[6]=complemento; c[7]=bairro
     c[8]=cod_mun; c[9]=uf_campo; c[10]=cod_pais; c[11]=cep
     c[12]=ie; c[13]=""; c[14]=""; c[15]=""
-    c[16]=""; c[17]=""; c[18]=""; c[19]=""
+    c[16]=""; c[17]=""; c[18]=DATA_CADASTRO_FIXO  # ── V5.6: campo 19 data cadastro
+    c[19]=""
     c[20]=""; c[21]="N"; c[22]="7"; c[23]=regime
     c[24]=contrib; c[25]=""; c[26]=""; c[27]=""
     c[28]=""; c[29]="N"; c[30]="N"; c[31]=""; c[32]=""
@@ -881,7 +874,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""; c[20]=cst_icms; c[21]=aliq_icms
     c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26,74): c[i]=""
-    c[74]=DATA_CADASTRO_FIXO
+    c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
     for i in range(75,88): c[i]=""
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
@@ -922,6 +915,7 @@ def extrair_pis_cofins(det, importacao: bool = False,
         res["class_trib"] = get_text(ibs_node,"nfe:cClassTrib")
     return res
 
+# ── V5.6: campo 2 = "Inicial" (descrição da vigência) ────────────────────────
 def gerar_registro_0110(det, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
                          tem_direito_credito: bool = True) -> str:
@@ -931,7 +925,9 @@ def gerar_registro_0110(det, importacao: bool = False,
     ct = pc["class_trib"]
     vinculo_credito = "08" if importacao else ""
     c = [""] * 70
-    c[0]="0110"; c[1]=DATA_CADASTRO_FIXO; c[2]=pc["cst_e"]; c[3]=vinculo_credito
+    c[0]="0110"
+    c[1]="Inicial"           # ── V5.6: campo 2 — descrição da vigência
+    c[2]=pc["cst_e"]; c[3]=vinculo_credito
     c[4]="01"; c[5]="N"; c[6]="N"; c[7]=pc["aliq_pis_e"]; c[8]=pc["aliq_cof_e"]
     c[9]="N"; c[10]="N"; c[11]=""; c[12]=""; c[13]=""; c[14]=""
     c[15]=pc["cst_s"]; c[16]="N"; c[17]=""; c[18]=""; c[19]=""
@@ -943,7 +939,7 @@ def gerar_registro_0110(det, importacao: bool = False,
     c[66]=ct; c[67]=ct; c[68]="N"; c[69]="N"
     return pipe_join(c)
 
-# ── V5.5: gerar_registro_1000 com sanitizar_texto_livre no obs_fisco ──────────
+# ── V5.6: obs_fisco sanitizado ────────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157", especie: str = "36",
                         importacao: bool = False) -> str:
@@ -983,7 +979,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     inf_adic  = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
     obs_fisco = ""
     if inf_adic is not None:
-        # ── V5.5: sanitiza | antes de truncar ────────────────────────────────
         obs_fisco = sanitizar_texto_livre(get_text(inf_adic, "nfe:infAdFisco"))[:300]
     n_di = ""
     if det_list:
@@ -1016,7 +1011,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     c[94]=""; c[95]=""; c[96]=v_icms_d; c[97]=""
     return pipe_join(c)
 
-# ── V5.5: sanitizar_texto_livre aplicado antes de fatiar em blocos ────────────
 def gerar_registros_1010(nfe_root) -> list:
     linhas = []
     inf_adic = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
@@ -1032,7 +1026,6 @@ def gerar_registros_1010(nfe_root) -> list:
                 linhas.append(pipe_join(["1010", cod, bloco]))
     return linhas
 
-# ── V5.5: sanitizar_texto_livre aplicado antes de fatiar em blocos ────────────
 def gerar_registros_1015(nfe_root) -> list:
     linhas = []
     inf_adic = nfe_root.find("nfe:infNFe/nfe:infAdic", NS)
@@ -1202,6 +1195,7 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                             valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
     return linhas
 
+# ── V5.6: campos 18 e 19 (frete e seguro por item) mapeados do XML ────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
                          tem_direito_credito: bool = True) -> str:
@@ -1218,6 +1212,10 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     unidade  = get_text(prod,"nfe:uCom")
     v_unit   = get_text(prod,"nfe:vUnCom")
     cest     = get_text(prod,"nfe:CEST")
+    # ── V5.6: frete e seguro por item ────────────────────────────────────────
+    v_frete_item = fmt_decimal(get_text(prod, "nfe:vFrete"))
+    v_seg_item   = fmt_decimal(get_text(prod, "nfe:vSeg"))
+    # ─────────────────────────────────────────────────────────────────────────
     di_node  = prod.find("nfe:DI", NS)
     n_di = somente_numeros(get_text(di_node,"nfe:nDI")) if di_node is not None else ""
     d_di = fmt_date(get_text(di_node,"nfe:dDI"))        if di_node is not None else ""
@@ -1304,7 +1302,9 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[0]="1030"; c[1]=cod_prod; c[2]=qtd; c[3]=v_total; c[4]=v_ipi
     c[5]=fmt_decimal(v_prod); c[6]="1"; c[7]=d_di; c[8]=n_di; c[9]=cst_icms
     c[10]=fmt_decimal(v_prod); c[11]=fmt_decimal(v_desc); c[12]=v_bc_icms
-    c[13]=v_bc_st; c[14]=aliq_icms; c[15]=""; c[16]=""; c[17]=""; c[18]=""
+    c[13]=v_bc_st; c[14]=aliq_icms; c[15]=""; c[16]=""
+    c[17]=v_frete_item   # ── V5.6: campo 18 — valor frete por item (<vFrete>)
+    c[18]=v_seg_item     # ── V5.6: campo 19 — valor seguro por item (<vSeg>)
     c[19]=fmt_decimal(v_outro); c[20]=""; c[21]=v_icms; c[22]=""; c[23]=""
     c[24]=""; c[25]=""; c[26]=fmt_decimal(v_unit,6); c[27]=""; c[28]=cst_ipi
     c[29]=aliq_ipi; c[30]=""; c[31]=""; c[32]=""; c[33]=cfop; c[34]=""
@@ -1561,18 +1561,20 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V5.6-FINAL — Correcoes de leiaute confirmadas pelos arquivos oficiais</h4>
+        <ul>
+          <li><b>0020 campo 19</b>: Data do cadastro preenchida com DATA_CADASTRO_FIXO.</li>
+          <li><b>0110 campo 2</b>: Descricao da vigencia = "Inicial" (era DATA_CADASTRO_FIXO).</li>
+          <li><b>1030 campo 18</b>: Valor do frete por item mapeado de &lt;vFrete&gt; do XML.</li>
+          <li><b>1030 campo 19</b>: Valor do seguro por item mapeado de &lt;vSeg&gt; do XML.</li>
+        </ul>
         <h4>V5.5-FINAL — Sanitizacao de pipe (|) em campos de texto livre</h4>
         <ul>
-          <li><b>sanitizar_texto_livre()</b>: nova funcao — substitui | por / e remove \\n/\\r.</li>
-          <li><b>gerar_registros_1010</b>: aplica sanitizacao antes de fatiar em blocos de 300 chars.</li>
-          <li><b>gerar_registros_1015</b>: idem.</li>
-          <li><b>gerar_registro_1000</b>: aplica sanitizacao no campo obs_fisco (campo 14).</li>
+          <li><b>sanitizar_texto_livre()</b>: substitui | por / e remove \\n/\\r.</li>
+          <li><b>1010 / 1015</b>: sanitizacao antes de fatiar em blocos de 300 chars.</li>
+          <li><b>1000 campo 15</b>: sanitizacao no campo obs_fisco.</li>
         </ul>
         <h4>V5.4-FINAL — CNPJ vazio para fornecedor estrangeiro</h4>
-        <ul>
-          <li><b>gerar_registro_0020</b>: campo c[1] (CNPJ/CPF) = "" para importacao.</li>
-          <li><b>gerar_registro_1000</b>: campo c[2] (cnpj_forn) = "" para importacao.</li>
-        </ul>
         <h4>V5.3-FINAL — Chave NF-e cascata robusta + normalizar_nfe_root</h4>
         <h4>V5.2-FINAL — emitente_nf="T" sempre para NF de entrada</h4>
         <h4>V5.1-FINAL — CST PIS/COFINS tabelas + tem_direito_credito</h4>
