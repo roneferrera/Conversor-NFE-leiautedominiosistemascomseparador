@@ -1217,6 +1217,7 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     d_di = fmt_date(get_text(di_node,"nfe:dDI"))        if di_node is not None else ""
     icms_node = None
     v_bc_icms = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
+    mot_des_icms = ""  # ── V5.8: motivo da desoneração
     v_ipi = aliq_ipi = cst_ipi = ""
     v_pis = aliq_pis = cst_pis_xml = bc_pis = ""
     v_cof = aliq_cof = cst_cof_xml = bc_cof = ""
@@ -1230,12 +1231,14 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
             if node is not None:
                 icms_node = node; break
         if icms_node is not None:
-            v_bc_icms  = fmt_decimal(get_text(icms_node,"nfe:vBC"))
-            aliq_icms  = fmt_decimal(get_text(icms_node,"nfe:pICMS"))
-            v_icms     = fmt_decimal(get_text(icms_node,"nfe:vICMS"))
-            cst_icms   = get_text(icms_node,"nfe:CST") or get_text(icms_node,"nfe:CSOSN")
-            v_icms_des = fmt_decimal(get_text(icms_node,"nfe:vICMSDeson"))
-            v_bc_st    = fmt_decimal(get_text(icms_node,"nfe:vBCST"))
+            v_bc_icms    = fmt_decimal(get_text(icms_node,"nfe:vBC"))
+            aliq_icms    = fmt_decimal(get_text(icms_node,"nfe:pICMS"))
+            v_icms       = fmt_decimal(get_text(icms_node,"nfe:vICMS"))
+            cst_icms     = get_text(icms_node,"nfe:CST") or get_text(icms_node,"nfe:CSOSN")
+            v_icms_des   = fmt_decimal(get_text(icms_node,"nfe:vICMSDeson"))
+            v_bc_st      = fmt_decimal(get_text(icms_node,"nfe:vBCST"))
+            # ── V5.8: extrai motivo da desoneração do XML, fallback "9" (Outros)
+            mot_des_icms = get_text(icms_node,"nfe:motDesICMS") or ""
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         ipi_nt   = imposto.find("nfe:IPI/nfe:IPINT", NS)
         if ipi_trib is not None:
@@ -1294,6 +1297,12 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
         v_total = fmt_decimal(v_prod)
     vinculo_pis = "08" if importacao else ""
     vinculo_cof = "08" if importacao else ""
+
+    # ── V5.8: motivo da desoneração — só preenche se houver valor desonerado
+    mot_des_campo = ""
+    if v_icms_des and safe_float(v_icms_des.replace(",",".")) > 0:
+        mot_des_campo = mot_des_icms if mot_des_icms else "9"
+
     c = [""] * 111
     c[0]="1030"; c[1]=cod_prod; c[2]=qtd; c[3]=v_total; c[4]=v_ipi
     c[5]=fmt_decimal(v_prod); c[6]="1"; c[7]=d_di; c[8]=n_di; c[9]=cst_icms
@@ -1316,7 +1325,10 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[73]=""; c[74]=""; c[75]=""; c[76]=""; c[77]=""; c[78]=""; c[79]=""
     c[80]=""; c[81]=""; c[82]=""; c[83]=""; c[84]=""; c[85]=""; c[86]=""
     c[87]=""; c[88]=""; c[89]=""; c[90]=cest; c[91]=""; c[92]=""; c[93]=""
-    c[94]=""; c[95]=""; c[96]=v_icms_des; c[97]=""; c[98]=""; c[99]=""
+    c[94]=""; c[95]=""
+    c[96]=v_icms_des      # ── campo 97: Valor Desonerado
+    c[97]=mot_des_campo   # ── V5.8: campo 98: Motivo da Desoneração (ex: 9 = Outros)
+    c[98]=""; c[99]=""
     c[100]=""; c[101]=""; c[102]=""
     c[103]=ibs_class_trib; c[104]=ibs_bc; c[105]=ibs_aliq; c[106]=ibs_val
     c[107]=cbs_class_trib; c[108]=cbs_bc; c[109]=cbs_aliq; c[110]=cbs_val
