@@ -13,9 +13,12 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.10-FINAL"
+VERSAO = "V5.11-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
+# ─────────────────────────────────────────────
+# TEMA
+# ─────────────────────────────────────────────
 def apply_tr_theme():
     st.markdown("""
         <style>
@@ -64,6 +67,9 @@ st.markdown(f"""
 
 NS = {"nfe": "http://www.portalfiscal.inf.br/nfe"}
 
+# ─────────────────────────────────────────────
+# TABELAS
+# ─────────────────────────────────────────────
 TABELA_GRUPOS = {
     0:  "Automatico (por CFOP/NCM)",
     1:  "GERAL",
@@ -115,20 +121,6 @@ TABELA_CST_PIS_COFINS_ENTRADA = {
     "74": "74 - Op. de Aquisicao sem Incidencia da Contribuicao",
     "75": "75 - Op. de Aquisicao por Substituicao Tributaria",
     "98": "98 - Outras Operacoes de Entrada",
-    "99": "99 - Outras Operacoes",
-}
-
-TABELA_CST_PIS_COFINS_SAIDA = {
-    "01": "01 - Op. Tributavel - Aliq. Normal",
-    "02": "02 - Op. Tributavel - Aliq. Diferenciada",
-    "03": "03 - Op. Tributavel - Qtde (pauta)",
-    "04": "04 - Op. Tributavel - Monofasica - Aliq. Zero",
-    "05": "05 - Op. Tributavel - Substituicao Tributaria",
-    "06": "06 - Op. Tributavel - Aliq. Zero",
-    "07": "07 - Op. Isenta de Contribuicao",
-    "08": "08 - Op. Sem Incidencia da Contribuicao",
-    "09": "09 - Op. com Suspensao da Contribuicao",
-    "49": "49 - Outras Operacoes de Saida",
     "99": "99 - Outras Operacoes",
 }
 
@@ -542,6 +534,9 @@ def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
                 return True
     return False
 
+# ─────────────────────────────────────────────
+# EXTRAÇÃO DE DADOS PARA EXCEL
+# ─────────────────────────────────────────────
 def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
                                   aliq_pis_pad: float = 0.0,
                                   aliq_cof_pad: float = 0.0,
@@ -646,86 +641,164 @@ def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
         })
     return linhas
 
+# ─────────────────────────────────────────────
+# EXCEL — V5.11: destaque de alíquota reduzida
+# ─────────────────────────────────────────────
 def gerar_excel_relatorio(dados_itens: list) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Impostos por Item"
-    cinza_esc="444444"; laranja="FF8000"
-    subhdr_icms=PatternFill("solid",fgColor="1565C0"); subhdr_ipi=PatternFill("solid",fgColor="6A1B9A")
-    subhdr_ii=PatternFill("solid",fgColor="BF360C");   subhdr_pis=PatternFill("solid",fgColor="1B5E20")
-    subhdr_cof=PatternFill("solid",fgColor="E65100");  subhdr_prod=PatternFill("solid",fgColor=laranja)
-    subhdr_ident=PatternFill("solid",fgColor=cinza_esc); subhdr_red=PatternFill("solid",fgColor="880000")
-    white_font=Font(bold=True,color="FFFFFF",size=9)
-    alt_fill=PatternFill("solid",fgColor="E9E9E9"); alt_fill2=PatternFill("solid",fgColor="FFFFFF")
-    center=Alignment(horizontal="center",vertical="center"); left=Alignment(horizontal="left",vertical="center")
-    thin=Side(style="thin",color="CCCCCC"); border=Border(left=thin,right=thin,top=thin,bottom=thin)
-    green_fill=PatternFill("solid",fgColor="E8F5E9")
+
+    cinza_esc = "444444"; laranja = "FF8000"
+    subhdr_icms  = PatternFill("solid", fgColor="1565C0")
+    subhdr_ipi   = PatternFill("solid", fgColor="6A1B9A")
+    subhdr_ii    = PatternFill("solid", fgColor="BF360C")
+    subhdr_pis   = PatternFill("solid", fgColor="1B5E20")
+    subhdr_cof   = PatternFill("solid", fgColor="E65100")
+    subhdr_prod  = PatternFill("solid", fgColor=laranja)
+    subhdr_ident = PatternFill("solid", fgColor=cinza_esc)
+    subhdr_red   = PatternFill("solid", fgColor="880000")
+    white_font   = Font(bold=True, color="FFFFFF", size=9)
+    alt_fill     = PatternFill("solid", fgColor="E9E9E9")
+    alt_fill2    = PatternFill("solid", fgColor="FFFFFF")
+    center       = Alignment(horizontal="center", vertical="center")
+    left         = Alignment(horizontal="left",   vertical="center")
+    thin         = Side(style="thin", color="CCCCCC")
+    border       = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # ── V5.11: fills de destaque
+    green_fill   = PatternFill("solid", fgColor="E8F5E9")   # verde  = crédito PIS/COFINS
+    yellow_fill  = PatternFill("solid", fgColor="FFF9C4")   # amarelo= alíquota REDUZIDA
+    orange_fill  = PatternFill("solid", fgColor="FFF3E0")   # laranja= alíquota DIFERENTE
+
     if not dados_itens:
-        ws["A1"]="Nenhum dado disponivel."
-        buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
-    colunas=list(dados_itens[0].keys())
-    grupos={
-        "Identificacao":["Arquivo","NF","Emissao","Fornecedor","Chave NF-e","Item"],
-        "Produto":["Cod. Produto","Descricao","NCM","CFOP","Qtd","V. Unit.","V. Prod.","V. Outro","V. Desc."],
-        "ICMS":["CST ICMS","BC ICMS","Aliq. ICMS %","V. ICMS","V. ICMS Deson"],
-        "IPI":["CST IPI","BC IPI","Aliq. IPI %","V. IPI"],
-        "II":["BC II","V. II"],
-        "PIS":["CST PIS (XML)","CST PIS (Efet)","BC PIS","Aliq. PIS %","V. PIS"],
-        "COFINS":["CST COF (XML)","CST COF (Efet)","BC COFINS","Aliq. COFINS %","V. COFINS"],
-        "Credito":["Aliq. PIS Padrao","Aliq. COF Padrao","PIS c/ Credito","COF c/ Credito"],
+        ws["A1"] = "Nenhum dado disponivel."
+        buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+    colunas = list(dados_itens[0].keys())
+    grupos = {
+        "Identificacao": ["Arquivo","NF","Emissao","Fornecedor","Chave NF-e","Item"],
+        "Produto":       ["Cod. Produto","Descricao","NCM","CFOP","Qtd","V. Unit.","V. Prod.","V. Outro","V. Desc."],
+        "ICMS":          ["CST ICMS","BC ICMS","Aliq. ICMS %","V. ICMS","V. ICMS Deson"],
+        "IPI":           ["CST IPI","BC IPI","Aliq. IPI %","V. IPI"],
+        "II":            ["BC II","V. II"],
+        "PIS":           ["CST PIS (XML)","CST PIS (Efet)","BC PIS","Aliq. PIS %","V. PIS"],
+        "COFINS":        ["CST COF (XML)","CST COF (Efet)","BC COFINS","Aliq. COFINS %","V. COFINS"],
+        "Credito":       ["Aliq. PIS Padrao","Aliq. COF Padrao","PIS c/ Credito","COF c/ Credito"],
     }
-    cor_grupo={
-        "Identificacao":subhdr_ident,"Produto":subhdr_prod,"ICMS":subhdr_icms,
-        "IPI":subhdr_ipi,"II":subhdr_ii,"PIS":subhdr_pis,"COFINS":subhdr_cof,
-        "Credito":subhdr_red
+    cor_grupo = {
+        "Identificacao": subhdr_ident, "Produto": subhdr_prod,
+        "ICMS": subhdr_icms, "IPI": subhdr_ipi, "II": subhdr_ii,
+        "PIS": subhdr_pis, "COFINS": subhdr_cof, "Credito": subhdr_red,
     }
-    col_grupo={}
-    for grp,cols in grupos.items():
+    col_grupo = {}
+    for grp, cols in grupos.items():
         for c in cols:
-            col_grupo[c]=grp
-    col_idx=1
-    for grp,cols in grupos.items():
-        start=col_idx; end=col_idx+len(cols)-1
-        ws.merge_cells(start_row=1,start_column=start,end_row=1,end_column=end)
-        cell=ws.cell(row=1,column=start,value=grp)
-        cell.fill=cor_grupo[grp]; cell.font=white_font; cell.alignment=center; cell.border=border
-        col_idx=end+1
-    for ci,col in enumerate(colunas,start=1):
-        cell=ws.cell(row=2,column=ci,value=col)
-        grp=col_grupo.get(col,"Identificacao")
-        cell.fill=cor_grupo[grp]; cell.font=white_font; cell.alignment=center; cell.border=border
-    cols_num={"Qtd","V. Unit.","V. Prod.","V. Outro","V. Desc.","BC ICMS","Aliq. ICMS %","V. ICMS",
-              "V. ICMS Deson","BC IPI","Aliq. IPI %","V. IPI","BC II","V. II","BC PIS","Aliq. PIS %",
-              "V. PIS","BC COFINS","Aliq. COFINS %","V. COFINS","Aliq. PIS Padrao","Aliq. COF Padrao"}
-    for ri,row in enumerate(dados_itens,start=3):
-        fill_base=alt_fill if ri%2==1 else alt_fill2
-        pis_cred=row.get("PIS c/ Credito")=="SIM"
-        cof_cred=row.get("COF c/ Credito")=="SIM"
-        for ci,col in enumerate(colunas,start=1):
-            val=row[col]; cell=ws.cell(row=ri,column=ci,value=val)
-            cell.border=border; cell.alignment=center if col in cols_num else left
+            col_grupo[c] = grp
+
+    # Linha 1 — cabeçalho de grupos
+    col_idx = 1
+    for grp, cols in grupos.items():
+        start = col_idx; end = col_idx + len(cols) - 1
+        ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
+        cell = ws.cell(row=1, column=start, value=grp)
+        cell.fill = cor_grupo[grp]; cell.font = white_font
+        cell.alignment = center; cell.border = border
+        col_idx = end + 1
+
+    # Linha 2 — nomes das colunas
+    for ci, col in enumerate(colunas, start=1):
+        cell = ws.cell(row=2, column=ci, value=col)
+        grp  = col_grupo.get(col, "Identificacao")
+        cell.fill = cor_grupo[grp]; cell.font = white_font
+        cell.alignment = center; cell.border = border
+
+    cols_num = {
+        "Qtd","V. Unit.","V. Prod.","V. Outro","V. Desc.","BC ICMS","Aliq. ICMS %","V. ICMS",
+        "V. ICMS Deson","BC IPI","Aliq. IPI %","V. IPI","BC II","V. II","BC PIS","Aliq. PIS %",
+        "V. PIS","BC COFINS","Aliq. COFINS %","V. COFINS","Aliq. PIS Padrao","Aliq. COF Padrao"
+    }
+
+    # Linhas de dados
+    for ri, row in enumerate(dados_itens, start=3):
+        fill_base = alt_fill if ri % 2 == 1 else alt_fill2
+        pis_cred  = row.get("PIS c/ Credito") == "SIM"
+        cof_cred  = row.get("COF c/ Credito") == "SIM"
+
+        # ── V5.11: detecta alíquota reduzida / diferente vs. padrão da nota
+        aliq_pis_row = row.get("Aliq. PIS %", 0.0)
+        aliq_cof_row = row.get("Aliq. COFINS %", 0.0)
+        aliq_pis_pad = row.get("Aliq. PIS Padrao", 0.0)
+        aliq_cof_pad = row.get("Aliq. COF Padrao", 0.0)
+
+        pis_reduzida  = (aliq_pis_pad > 0 and aliq_pis_row < aliq_pis_pad)
+        cof_reduzida  = (aliq_cof_pad > 0 and aliq_cof_row < aliq_cof_pad)
+        pis_diferente = (aliq_pis_pad > 0 and aliq_pis_row != aliq_pis_pad and not pis_reduzida)
+        cof_diferente = (aliq_cof_pad > 0 and aliq_cof_row != aliq_cof_pad and not cof_reduzida)
+
+        for ci, col in enumerate(colunas, start=1):
+            val  = row[col]
+            cell = ws.cell(row=ri, column=ci, value=val)
+            cell.border    = border
+            cell.alignment = center if col in cols_num else left
+
+            # ── Prioridade de coloração
             if col in ("CST PIS (Efet)","BC PIS","Aliq. PIS %","V. PIS","CST PIS (XML)") and pis_cred:
-                cell.fill=green_fill
+                cell.fill = green_fill
             elif col in ("CST COF (Efet)","BC COFINS","Aliq. COFINS %","V. COFINS","CST COF (XML)") and cof_cred:
-                cell.fill=green_fill
-            elif col in ("PIS c/ Credito","COF c/ Credito") and val=="SIM":
-                cell.fill=green_fill
+                cell.fill = green_fill
+            elif col in ("PIS c/ Credito","COF c/ Credito") and val == "SIM":
+                cell.fill = green_fill
+            # ── V5.11: alíquota reduzida (amarelo)
+            elif col in ("Aliq. PIS %","BC PIS","V. PIS") and pis_reduzida and not pis_cred:
+                cell.fill = yellow_fill
+            elif col in ("Aliq. COFINS %","BC COFINS","V. COFINS") and cof_reduzida and not cof_cred:
+                cell.fill = yellow_fill
+            # ── V5.11: alíquota diferente do padrão (laranja)
+            elif col in ("Aliq. PIS %","BC PIS","V. PIS") and pis_diferente and not pis_cred:
+                cell.fill = orange_fill
+            elif col in ("Aliq. COFINS %","BC COFINS","V. COFINS") and cof_diferente and not cof_cred:
+                cell.fill = orange_fill
             else:
-                cell.fill=fill_base
-            if col in cols_num and isinstance(val,float):
-                cell.number_format='#,##0.0000' if ("Aliq" in col or "Padrao" in col) else '#,##0.00'
-    tot_row=len(dados_itens)+3
-    ws.cell(row=tot_row,column=1,value="TOTAL").font=Font(bold=True)
-    cols_soma=["V. Prod.","V. Outro","V. Desc.","BC ICMS","V. ICMS","V. ICMS Deson",
-               "BC IPI","V. IPI","BC II","V. II","BC PIS","V. PIS","BC COFINS","V. COFINS"]
-    tot_fill=PatternFill("solid",fgColor="FFF3E0")
-    for ci,col in enumerate(colunas,start=1):
-        cell=ws.cell(row=tot_row,column=ci); cell.fill=tot_fill; cell.border=border
-        cell.font=Font(bold=True,size=9)
+                cell.fill = fill_base
+
+            if col in cols_num and isinstance(val, float):
+                cell.number_format = '#,##0.0000' if ("Aliq" in col or "Padrao" in col) else '#,##0.00'
+
+    # Linha de totais
+    tot_row  = len(dados_itens) + 3
+    ws.cell(row=tot_row, column=1, value="TOTAL").font = Font(bold=True)
+    cols_soma = ["V. Prod.","V. Outro","V. Desc.","BC ICMS","V. ICMS","V. ICMS Deson",
+                 "BC IPI","V. IPI","BC II","V. II","BC PIS","V. PIS","BC COFINS","V. COFINS"]
+    tot_fill = PatternFill("solid", fgColor="FFF3E0")
+    for ci, col in enumerate(colunas, start=1):
+        cell = ws.cell(row=tot_row, column=ci)
+        cell.fill = tot_fill; cell.border = border
+        cell.font = Font(bold=True, size=9)
         if col in cols_soma:
-            cell.value=sum(r[col] for r in dados_itens if isinstance(r[col],float))
-            cell.number_format='#,##0.00'; cell.alignment=center
-    larguras={
+            cell.value = sum(r[col] for r in dados_itens if isinstance(r[col], float))
+            cell.number_format = '#,##0.00'; cell.alignment = center
+
+    # ── V5.11: Legenda de cores
+    leg_row = tot_row + 2
+    ws.cell(row=leg_row, column=1, value="LEGENDA DE CORES").font = Font(bold=True, color="FF8000", size=10)
+    legendas = [
+        ("Verde",   green_fill,  "CST convertido para entrada com direito a credito PIS/COFINS"),
+        ("Amarelo", yellow_fill, "Aliquota PIS/COFINS REDUZIDA em relacao ao padrao majoritario da nota"),
+        ("Laranja", orange_fill, "Aliquota PIS/COFINS DIFERENTE do padrao da nota (acima ou distinta)"),
+    ]
+    for i, (nome, fill, desc) in enumerate(legendas, start=1):
+        c1 = ws.cell(row=leg_row + i, column=1, value=nome)
+        c1.fill = fill; c1.border = border; c1.font = Font(bold=True, size=9)
+        c2 = ws.cell(row=leg_row + i, column=2, value=desc)
+        c2.border = border
+        ws.merge_cells(
+            start_row=leg_row+i, start_column=2,
+            end_row=leg_row+i,   end_column=6
+        )
+
+    # Larguras das colunas
+    larguras = {
         "Arquivo":22,"NF":10,"Emissao":12,"Fornecedor":30,"Chave NF-e":46,"Item":6,
         "Cod. Produto":18,"Descricao":50,"NCM":12,"CFOP":8,"Qtd":10,"V. Unit.":14,
         "V. Prod.":14,"V. Outro":12,"V. Desc.":12,"CST ICMS":10,"BC ICMS":14,
@@ -735,58 +808,67 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         "CST COF (Efet)":13,"BC COFINS":14,"Aliq. COFINS %":14,"V. COFINS":12,
         "Aliq. PIS Padrao":16,"Aliq. COF Padrao":16,"PIS c/ Credito":14,"COF c/ Credito":14
     }
-    for ci,col in enumerate(colunas,start=1):
-        ws.column_dimensions[get_column_letter(ci)].width=larguras.get(col,14)
-    ws.row_dimensions[1].height=20; ws.row_dimensions[2].height=28; ws.freeze_panes="A3"
-    ws2=wb.create_sheet("Resumo 1020")
-    ws2["A1"]="Resumo das linhas 1020 (agrupado por aliquota)"
-    ws2["A1"].font=Font(bold=True,color=laranja,size=11)
-    hdr2=["Sigla","Base de Calculo","Aliquota %","Valor Imposto","CST Efetivo","Obs"]
-    for ci,h in enumerate(hdr2,start=1):
-        c=ws2.cell(row=2,column=ci,value=h)
-        c.fill=PatternFill("solid",fgColor=cinza_esc); c.font=white_font
-        c.alignment=center; c.border=border
-    pis_ag={}; cof_ag={}
+    for ci, col in enumerate(colunas, start=1):
+        ws.column_dimensions[get_column_letter(ci)].width = larguras.get(col, 14)
+    ws.row_dimensions[1].height = 20
+    ws.row_dimensions[2].height = 28
+    ws.freeze_panes = "A3"
+
+    # Aba Resumo 1020
+    ws2 = wb.create_sheet("Resumo 1020")
+    ws2["A1"] = "Resumo das linhas 1020 (agrupado por aliquota)"
+    ws2["A1"].font = Font(bold=True, color=laranja, size=11)
+    hdr2 = ["Sigla","Base de Calculo","Aliquota %","Valor Imposto","CST Efetivo","Obs"]
+    for ci, h in enumerate(hdr2, start=1):
+        c = ws2.cell(row=2, column=ci, value=h)
+        c.fill = PatternFill("solid", fgColor=cinza_esc)
+        c.font = white_font; c.alignment = center; c.border = border
+
+    pis_ag = {}; cof_ag = {}
     for row in dados_itens:
-        k=row["Aliq. PIS %"]
+        k = row["Aliq. PIS %"]
         if k not in pis_ag:
-            pis_ag[k]={"bc":0.0,"val":0.0,"cst":row["CST PIS (Efet)"]}
-        pis_ag[k]["bc"]+=row["BC PIS"]; pis_ag[k]["val"]+=row["V. PIS"]
-        k2=row["Aliq. COFINS %"]
+            pis_ag[k] = {"bc":0.0,"val":0.0,"cst":row["CST PIS (Efet)"]}
+        pis_ag[k]["bc"]  += row["BC PIS"]
+        pis_ag[k]["val"] += row["V. PIS"]
+        k2 = row["Aliq. COFINS %"]
         if k2 not in cof_ag:
-            cof_ag[k2]={"bc":0.0,"val":0.0,"cst":row["CST COF (Efet)"]}
-        cof_ag[k2]["bc"]+=row["BC COFINS"]; cof_ag[k2]["val"]+=row["V. COFINS"]
-    ri2=3
-    for aliq,d in sorted(pis_ag.items()):
-        if d["val"]>0 or d["bc"]>0:
-            cst_desc=TABELA_CST_PIS_COFINS_ENTRADA.get(d["cst"],d["cst"])
-            row_fill=green_fill if d["cst"] in ("50","51","52") else alt_fill2
-            for ci,v in enumerate(["PIS",d["bc"],aliq,d["val"],d["cst"],cst_desc],start=1):
-                c=ws2.cell(row=ri2,column=ci,value=v); c.border=border
-                c.alignment=center; c.fill=row_fill
+            cof_ag[k2] = {"bc":0.0,"val":0.0,"cst":row["CST COF (Efet)"]}
+        cof_ag[k2]["bc"]  += row["BC COFINS"]
+        cof_ag[k2]["val"] += row["V. COFINS"]
+
+    ri2 = 3
+    for aliq, d in sorted(pis_ag.items()):
+        if d["val"] > 0 or d["bc"] > 0:
+            cst_desc  = TABELA_CST_PIS_COFINS_ENTRADA.get(d["cst"], d["cst"])
+            row_fill  = green_fill if d["cst"] in ("50","51","52") else alt_fill2
+            for ci, v in enumerate(["PIS", d["bc"], aliq, d["val"], d["cst"], cst_desc], start=1):
+                c = ws2.cell(row=ri2, column=ci, value=v)
+                c.border = border; c.alignment = center; c.fill = row_fill
                 if ci in (2,3,4):
-                    c.number_format='#,##0.0000' if ci==3 else '#,##0.00'
-            ri2+=1
-    for aliq,d in sorted(cof_ag.items()):
-        if d["val"]>0 or d["bc"]>0:
-            cst_desc=TABELA_CST_PIS_COFINS_ENTRADA.get(d["cst"],d["cst"])
-            row_fill=green_fill if d["cst"] in ("50","51","52") else alt_fill2
-            for ci,v in enumerate(["COFINS",d["bc"],aliq,d["val"],d["cst"],cst_desc],start=1):
-                c=ws2.cell(row=ri2,column=ci,value=v); c.border=border
-                c.alignment=center; c.fill=row_fill
+                    c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
+            ri2 += 1
+    for aliq, d in sorted(cof_ag.items()):
+        if d["val"] > 0 or d["bc"] > 0:
+            cst_desc  = TABELA_CST_PIS_COFINS_ENTRADA.get(d["cst"], d["cst"])
+            row_fill  = green_fill if d["cst"] in ("50","51","52") else alt_fill2
+            for ci, v in enumerate(["COFINS", d["bc"], aliq, d["val"], d["cst"], cst_desc], start=1):
+                c = ws2.cell(row=ri2, column=ci, value=v)
+                c.border = border; c.alignment = center; c.fill = row_fill
                 if ci in (2,3,4):
-                    c.number_format='#,##0.0000' if ci==3 else '#,##0.00'
-            ri2+=1
-    for ci in range(1,7):
-        ws2.column_dimensions[get_column_letter(ci)].width=22
-    ws2.column_dimensions[get_column_letter(6)].width=60
-    ws2.freeze_panes="A3"
-    buf=io.BytesIO(); wb.save(buf); return buf.getvalue()
+                    c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
+            ri2 += 1
+
+    for ci in range(1, 7):
+        ws2.column_dimensions[get_column_letter(ci)].width = 22
+    ws2.column_dimensions[get_column_letter(6)].width = 60
+    ws2.freeze_panes = "A3"
+
+    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 # ─────────────────────────────────────────────
 # REGISTROS
 # ─────────────────────────────────────────────
-
 def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
@@ -826,15 +908,14 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
         cod_pais     = ""
         ie           = get_text(emit, "nfe:IE")
         crt          = get_text(emit, "nfe:CRT")
-        regime       = {"1": "M", "2": "E", "3": "N"}.get(crt, "N")
-        contrib      = "S" if ie and ie.upper() not in ("ISENTO", "NAO CONTRIBUINTE", "") else "N"
+        regime       = {"1":"M","2":"E","3":"N"}.get(crt, "N")
+        contrib      = "S" if ie and ie.upper() not in ("ISENTO","NAO CONTRIBUINTE","") else "N"
     c = [""] * 33
     c[0]="0020"; c[1]=inscricao; c[2]=razao; c[3]=fantasia
     c[4]=logradouro; c[5]=numero; c[6]=complemento; c[7]=bairro
     c[8]=cod_mun; c[9]=uf_campo; c[10]=cod_pais; c[11]=cep
     c[12]=ie; c[13]=""; c[14]=""; c[15]=""
-    c[16]=""; c[17]=""; c[18]=DATA_CADASTRO_FIXO
-    c[19]=""
+    c[16]=""; c[17]=""; c[18]=DATA_CADASTRO_FIXO; c[19]=""
     c[20]=""; c[21]="N"; c[22]="7"; c[23]=regime
     c[24]=contrib; c[25]=""; c[26]=""; c[27]=""
     c[28]=""; c[29]="N"; c[30]="N"; c[31]=""; c[32]=""
@@ -842,14 +923,7 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
 
 def gerar_registro_0100(det, grupo_padrao: int = 0,
                          conta_cfop_map: dict = None) -> str:
-    """
-    V5.9/V5.10: campo 70 (índice 69) = SPED Conta Contábil estoque Em seu poder
-    Sugestão automática por CFOP:
-      3102 → conta configurada pelo usuário (padrão "55" = Mercadoria para Revenda)
-      3101 → conta configurada pelo usuário (padrão "56" = Matéria Prima)
-      outros → conta configurada pelo usuário (padrão vazio)
-    """
-    prod      = det.find("nfe:prod", NS)
+    prod = det.find("nfe:prod", NS)
     if prod is None:
         return ""
     cod_prod  = get_text(prod,"nfe:cProd")[:14]
@@ -861,7 +935,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     cfop      = get_text(prod,"nfe:CFOP")
     cod_grupo = detectar_grupo(cfop, ncm, grupo_padrao)
     imposto   = det.find("nfe:imposto", NS)
-    cst_icms = aliq_icms = aliq_ipi = ""
+    cst_icms  = aliq_icms = aliq_ipi = ""
     if imposto is not None:
         for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40","ICMS51","ICMS60",
                    "ICMS70","ICMS90","ICMSSN101","ICMSSN102","ICMSSN201",
@@ -874,21 +948,19 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib,"nfe:pIPI"))
-
-    # ── V5.9/V5.10: Conta Contábil Estoque – Em seu poder (campo 70 / índice 69)
     if conta_cfop_map is None:
-        conta_cfop_map = {"3102": "55", "3101": "56", "outros": ""}
-    conta_contabil = conta_cfop_map.get(cfop, conta_cfop_map.get("outros", ""))
-
+        conta_cfop_map = {"3102":"55","3101":"56","outros":""}
+    conta_contabil = conta_cfop_map.get(cfop, conta_cfop_map.get("outros",""))
     c = [""] * 91
-    c[0]="0100"; c[1]=cod_prod; c[2]=descricao; c[3]=""; c[4]=ncm; c[5]=""; c[6]=""; c[7]=""
-    c[8]=str(cod_grupo); c[9]=unidade; c[10]="N"; c[11]="O"; c[12]=""; c[13]=""; c[14]=""; c[15]="N"
-    c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""; c[20]=cst_icms; c[21]=aliq_icms
-    c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
+    c[0]="0100"; c[1]=cod_prod; c[2]=descricao; c[3]=""; c[4]=ncm
+    c[5]=""; c[6]=""; c[7]=""; c[8]=str(cod_grupo); c[9]=unidade
+    c[10]="N"; c[11]="O"; c[12]=""; c[13]=""; c[14]=""; c[15]="N"
+    c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""
+    c[20]=cst_icms; c[21]=aliq_icms; c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26,69): c[i]=""
-    c[69]=conta_contabil  # ── V5.9/V5.10: campo 70 — SPED Conta Contábil estoque Em seu poder
+    c[69]=conta_contabil          # campo 70 — SPED Conta Contábil estoque Em seu poder
     for i in range(70,74): c[i]=""
-    c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
+    c[74]=DATA_CADASTRO_FIXO      # campo 75 — data cadastro
     for i in range(75,88): c[i]=""
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
@@ -938,8 +1010,7 @@ def gerar_registro_0110(det, importacao: bool = False,
     ct = pc["class_trib"]
     vinculo_credito = "08" if importacao else ""
     c = [""] * 70
-    c[0]="0110"
-    c[1]="Inicial"
+    c[0]="0110"; c[1]="Inicial"
     c[2]=pc["cst_e"]; c[3]=vinculo_credito
     c[4]="01"; c[5]="N"; c[6]="N"; c[7]=pc["aliq_pis_e"]; c[8]=pc["aliq_cof_e"]
     c[9]="N"; c[10]="N"; c[11]=""; c[12]=""; c[13]=""; c[14]=""
@@ -957,26 +1028,19 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         importacao: bool = False) -> str:
     ide   = nfe_root.find("nfe:infNFe/nfe:ide", NS)
     emit  = nfe_root.find("nfe:infNFe/nfe:emit", NS)
-    dest  = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     total = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     if importacao:
-        cnpj_forn = ""
-        ie_forn   = ""
+        cnpj_forn = ""; ie_forn = ""
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ") if emit is not None else ""
         ie_forn   = get_text(emit, "nfe:IE")   if emit is not None else ""
-
-    # ── V5.7: Para importacao, emitente = "P" (Proprio); para demais = "T" (Terceiros)
-    emitente_nf = "P" if importacao else "T"
-
+    emitente_nf = "P" if importacao else "T"   # V5.7
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
     dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
     c_mun_fg = get_text(ide, "nfe:cMunFG")
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
-    cfop_first = ""
-    if det_list:
-        cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP")
+    cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP") if det_list else ""
     v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
     v_pis    = fmt_decimal(get_text(total, "nfe:vPIS"))
     v_cofins = fmt_decimal(get_text(total, "nfe:vCOFINS"))
@@ -1005,8 +1069,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     c[5]=cfop_first; c[6]=""; c[7]=nNF; c[8]=serie; c[9]=""
     c[10]=dhEmi; c[11]=dhEmi; c[12]=v_nf; c[13]=""; c[14]=obs_fisco
     c[15]=mod_frete; c[16]=emitente_nf
-    c[17]=""; c[18]=""; c[19]=""
-    c[20]=""; c[21]=""; c[22]=""; c[23]=""; c[24]=""
+    c[17]=""; c[18]=""; c[19]=""; c[20]=""; c[21]=""; c[22]=""; c[23]=""; c[24]=""
     c[25]=v_frete; c[26]=v_seg; c[27]=v_outro; c[28]=v_pis; c[29]=""
     c[30]=v_cofins; c[31]=""; c[32]=""; c[33]=""; c[34]=""
     c[35]=""; c[36]=""; c[37]=""; c[38]=v_prod; c[39]=c_mun_fg
@@ -1233,7 +1296,7 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     d_di = fmt_date(get_text(di_node,"nfe:dDI"))        if di_node is not None else ""
     icms_node = None
     v_bc_icms = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
-    mot_des_icms = ""  # ── V5.8: motivo da desoneração
+    mot_des_icms = ""
     v_ipi = aliq_ipi = cst_ipi = ""
     v_pis = aliq_pis = cst_pis_xml = bc_pis = ""
     v_cof = aliq_cof = cst_cof_xml = bc_cof = ""
@@ -1253,7 +1316,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
             cst_icms     = get_text(icms_node,"nfe:CST") or get_text(icms_node,"nfe:CSOSN")
             v_icms_des   = fmt_decimal(get_text(icms_node,"nfe:vICMSDeson"))
             v_bc_st      = fmt_decimal(get_text(icms_node,"nfe:vBCST"))
-            # ── V5.8: extrai motivo da desoneração do XML, fallback "9" (Outros)
             mot_des_icms = get_text(icms_node,"nfe:motDesICMS") or ""
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         ipi_nt   = imposto.find("nfe:IPI/nfe:IPINT", NS)
@@ -1313,19 +1375,16 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
         v_total = fmt_decimal(v_prod)
     vinculo_pis = "08" if importacao else ""
     vinculo_cof = "08" if importacao else ""
-
-    # ── V5.8: motivo da desoneração — só preenche se houver valor desonerado
+    # V5.8: motivo desoneração
     mot_des_campo = ""
     if v_icms_des and safe_float(v_icms_des.replace(",",".")) > 0:
         mot_des_campo = mot_des_icms if mot_des_icms else "9"
-
     c = [""] * 111
     c[0]="1030"; c[1]=cod_prod; c[2]=qtd; c[3]=v_total; c[4]=v_ipi
     c[5]=fmt_decimal(v_prod); c[6]="1"; c[7]=d_di; c[8]=n_di; c[9]=cst_icms
     c[10]=fmt_decimal(v_prod); c[11]=fmt_decimal(v_desc); c[12]=v_bc_icms
     c[13]=v_bc_st; c[14]=aliq_icms; c[15]=""; c[16]=""
-    c[17]=v_frete_item
-    c[18]=v_seg_item
+    c[17]=v_frete_item; c[18]=v_seg_item
     c[19]=fmt_decimal(v_outro); c[20]=""; c[21]=v_icms; c[22]=""; c[23]=""
     c[24]=""; c[25]=""; c[26]=fmt_decimal(v_unit,6); c[27]=""; c[28]=cst_ipi
     c[29]=aliq_ipi; c[30]=""; c[31]=""; c[32]=""; c[33]=cfop; c[34]=""
@@ -1342,8 +1401,8 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[80]=""; c[81]=""; c[82]=""; c[83]=""; c[84]=""; c[85]=""; c[86]=""
     c[87]=""; c[88]=""; c[89]=""; c[90]=cest; c[91]=""; c[92]=""; c[93]=""
     c[94]=""; c[95]=""
-    c[96]=v_icms_des      # ── V5.8: campo 97 — Valor Desonerado
-    c[97]=mot_des_campo   # ── V5.8: campo 98 — Motivo da Desoneração (9 = Outros)
+    c[96]=v_icms_des       # V5.8: campo 97 — Valor Desonerado
+    c[97]=mot_des_campo    # V5.8: campo 98 — Motivo Desoneração
     c[98]=""; c[99]=""
     c[100]=""; c[101]=""; c[102]=""
     c[103]=ibs_class_trib; c[104]=ibs_bc; c[105]=ibs_aliq; c[106]=ibs_val
@@ -1372,12 +1431,12 @@ def gerar_registro_1097(nfe_root) -> str:
     cmun_transp  = get_text(transporta,"nfe:cMun")   if transporta is not None else ""
     cidade_cod   = somente_numeros(cmun_transp) if cmun_transp else ""
     tipo_insc    = "1" if cnpj_transp else ""
-    vol     = transp.find("nfe:vol", NS)
-    q_vol   = get_text(vol,"nfe:qVol")  if vol is not None else ""
-    esp_vol = get_text(vol,"nfe:esp")   if vol is not None else ""
-    marca   = get_text(vol,"nfe:marca") if vol is not None else ""
-    peso_l  = fmt_decimal(get_text(vol,"nfe:pesoL"),3) if vol is not None else ""
-    peso_b  = fmt_decimal(get_text(vol,"nfe:pesoB"),3) if vol is not None else ""
+    vol    = transp.find("nfe:vol", NS)
+    q_vol  = get_text(vol,"nfe:qVol")  if vol is not None else ""
+    esp_vol= get_text(vol,"nfe:esp")   if vol is not None else ""
+    marca  = get_text(vol,"nfe:marca") if vol is not None else ""
+    peso_l = fmt_decimal(get_text(vol,"nfe:pesoL"),3) if vol is not None else ""
+    peso_b = fmt_decimal(get_text(vol,"nfe:pesoB"),3) if vol is not None else ""
     return pipe_join([
         "1097", mod_frete, tp_via, frete_conta, "", "", "", "", "", "",
         razao_transp[:150] if razao_transp else "",
@@ -1393,6 +1452,9 @@ def gerar_registro_1150(ct, bc, aliq, valor) -> str:
 def gerar_registro_1151(ct, bc, aliq, valor) -> str:
     return pipe_join(["1151", ct, bc, aliq, valor])
 
+# ─────────────────────────────────────────────
+# CONVERSOR PRINCIPAL
+# ─────────────────────────────────────────────
 def converter_xml(xml_content: bytes, cnpj_fallback: str,
                   acumulador: str = "1157", especie: str = "36",
                   incluir_0000: bool = True, incluir_0020: bool = True,
@@ -1457,7 +1519,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
                            if grupo_padrao > 0 else "Auto (CFOP/NCM)"),
         "Direito Credito": "Sim" if tem_direito_credito else "Nao",
     }
-    _conta_map = conta_cfop_map or {"3102": "55", "3101": "56", "outros": ""}
+    _conta_map = conta_cfop_map or {"3102":"55","3101":"56","outros":""}
     if incluir_0000:
         lines.append(gerar_registro_0000(cnpj_empresa))
     if incluir_0020 and emit is not None:
@@ -1516,15 +1578,15 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
         guf = gibs.find("nfe:gIBSUF", NS)
         if guf is not None:
             try:
-                ibs_gerados[ct]["v_ibs"]    += float(get_text(guf,"nfe:vIBSUF") or "0")
-                ibs_gerados[ct]["aliq_ibs"]  = get_text(guf,"nfe:pIBSUF")
+                ibs_gerados[ct]["v_ibs"]   += float(get_text(guf,"nfe:vIBSUF") or "0")
+                ibs_gerados[ct]["aliq_ibs"] = get_text(guf,"nfe:pIBSUF")
             except ValueError: pass
         gcbs = gibs.find("nfe:gCBS", NS)
         if gcbs is not None:
             try:
-                ibs_gerados[ct]["bc_cbs"]   += float(get_text(gibs,"nfe:vBC") or "0")
-                ibs_gerados[ct]["v_cbs"]    += float(get_text(gcbs,"nfe:vCBS") or "0")
-                ibs_gerados[ct]["aliq_cbs"]  = get_text(gcbs,"nfe:pCBS")
+                ibs_gerados[ct]["bc_cbs"]  += float(get_text(gibs,"nfe:vBC") or "0")
+                ibs_gerados[ct]["v_cbs"]   += float(get_text(gcbs,"nfe:vCBS") or "0")
+                ibs_gerados[ct]["aliq_cbs"] = get_text(gcbs,"nfe:pCBS")
             except ValueError: pass
     for ct, d in ibs_gerados.items():
         lines.append(gerar_registro_1150(
@@ -1547,15 +1609,11 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Parametros")
     cnpj_fallback = st.text_input(
-        "CNPJ da Empresa (obrigatorio para importacao)",
-        value="", max_chars=14
-    )
+        "CNPJ da Empresa (obrigatorio para importacao)", value="", max_chars=14)
     acumulador = st.text_input("Codigo do Acumulador (fallback)", value="1157")
     tem_direito_credito = st.checkbox(
         "Tem direito a credito de PIS/COFINS", value=True,
-        help="Marcado: CST de saida convertido para CST de entrada com credito. "
-             "Desmarcado: CST do XML gravado sem transformacao."
-    )
+        help="Marcado: CST de saida convertido para CST de entrada com credito.")
     especie = st.text_input("Codigo da Especie", value="36")
     st.markdown("---")
     st.markdown("### Registros de cadastro")
@@ -1577,27 +1635,11 @@ with st.sidebar:
         index=0,
     )
     st.markdown("---")
-    # ── V5.9/V5.10: Conta Contábil Estoque (0100 campo 70)
-    st.markdown("### Conta Contábil Estoque (0100 campo 70)")
-    st.caption("SPED – Conta Contábil estoque – Em seu poder")
-    conta_3102 = st.text_input(
-        "CFOP 3102 – Mercadoria para Revenda",
-        value="55",
-        max_chars=20,
-        help="Conta contábil sugerida para CFOP 3102 (Compra p/ comercializacao - importacao direta)"
-    )
-    conta_3101 = st.text_input(
-        "CFOP 3101 – Matéria Prima",
-        value="56",
-        max_chars=20,
-        help="Conta contábil sugerida para CFOP 3101 (Compra p/ industrializacao - importacao direta)"
-    )
-    conta_outros = st.text_input(
-        "Demais CFOPs",
-        value="",
-        max_chars=20,
-        help="Conta contábil para CFOPs não mapeadas. Deixe em branco para não preencher."
-    )
+    st.markdown("### Conta Contabil Estoque (0100 campo 70)")
+    st.caption("SPED – Conta Contabil estoque – Em seu poder")
+    conta_3102   = st.text_input("CFOP 3102 – Mercadoria para Revenda", value="55", max_chars=20)
+    conta_3101   = st.text_input("CFOP 3101 – Materia Prima",           value="56", max_chars=20)
+    conta_outros = st.text_input("Demais CFOPs",                         value="",  max_chars=20)
     st.markdown("---")
     with st.expander("Tabela de Grupos"):
         for cod, desc in sorted(TABELA_GRUPOS.items()):
@@ -1610,25 +1652,26 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V5.10-FINAL — Consolidacao de todas as correcoes</h4>
+        <h4>V5.11-FINAL — Destaque de aliquota reduzida no Excel</h4>
         <ul>
-          <li><b>V5.7</b>: 1000 campo 17 (Emitente NF) = "P" para importacao, "T" para demais.</li>
-          <li><b>V5.8</b>: 1030 campo 97 = Valor Desonerado; campo 98 = Motivo Desoneração (fixo "9" - Outros quando não informado no XML).</li>
-          <li><b>V5.9/V5.10</b>: 0100 campo 70 = SPED Conta Contábil estoque Em seu poder. Sugestão automática: CFOP 3102 → conta "55" (Mercadoria para Revenda), CFOP 3101 → conta "56" (Matéria Prima). Configurável pelo usuário na sidebar.</li>
+          <li><b>Verde</b>: CST convertido de saida para entrada com direito a credito PIS/COFINS.</li>
+          <li><b>Amarelo</b>: Aliquota PIS/COFINS <b>REDUZIDA</b> em relacao ao padrao majoritario da nota.</li>
+          <li><b>Laranja</b>: Aliquota PIS/COFINS <b>DIFERENTE</b> do padrao da nota (acima ou distinta).</li>
+          <li>Legenda de cores adicionada ao final da planilha Excel.</li>
         </ul>
-        <h4>V5.6-FINAL — Correcoes de leiaute confirmadas pelos arquivos oficiais</h4>
+        <h4>V5.10-FINAL — Consolidacao de todas as correcoes anteriores</h4>
         <ul>
-          <li><b>0020 campo 19</b>: Data do cadastro preenchida com DATA_CADASTRO_FIXO.</li>
-          <li><b>0110 campo 2</b>: Descricao da vigencia = "Inicial".</li>
-          <li><b>1030 campo 18</b>: Valor do frete por item mapeado de &lt;vFrete&gt; do XML.</li>
-          <li><b>1030 campo 19</b>: Valor do seguro por item mapeado de &lt;vSeg&gt; do XML.</li>
+          <li><b>V5.7</b>: 1000 campo 17 = "P" para importacao, "T" para demais.</li>
+          <li><b>V5.8</b>: 1030 campo 97 = Valor Desonerado; campo 98 = Motivo Desoneração.</li>
+          <li><b>V5.9/V5.10</b>: 0100 campo 70 = Conta Contabil Estoque configuravel por CFOP.</li>
+          <li><b>V5.6</b>: 0020 campo 19 = Data cadastro; 0110 campo 2 = "Inicial"; 1030 campos 18/19 = frete/seguro por item.</li>
         </ul>
-        <h4>V5.5-FINAL — Sanitizacao de pipe (|) em campos de texto livre</h4>
-        <h4>V5.4-FINAL — CNPJ vazio para fornecedor estrangeiro</h4>
-        <h4>V5.3-FINAL — Chave NF-e cascata robusta + normalizar_nfe_root</h4>
         </div>
     """, unsafe_allow_html=True)
 
+# ─────────────────────────────────────────────
+# UPLOAD E PROCESSAMENTO
+# ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("#### Upload de arquivos")
 st.caption("Aceita **XML** individuais ou **ZIP** (somente XMLs com CFOP de importacao serao processados).")
@@ -1656,10 +1699,7 @@ if uploaded_files:
         elif nome_lower.endswith(".xml"):
             raw = f.read()
             if raw:
-                arquivos_para_processar.append({
-                    "nome": f.name,
-                    "bytes": sanitizar_xml_bytes(raw)
-                })
+                arquivos_para_processar.append({"nome": f.name, "bytes": sanitizar_xml_bytes(raw)})
             else:
                 relatorio_zip.append({
                     "zip": f.name, "total": 0, "importacao": 0,
@@ -1788,7 +1828,6 @@ if uploaded_files:
         )
         st.stop()
 
-    # Monta o mapa de contas contábeis a partir dos valores da sidebar
     conta_cfop_map_atual = {
         "3102": conta_3102.strip(),
         "3101": conta_3101.strip(),
