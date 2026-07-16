@@ -13,7 +13,7 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.6-FINAL"
+VERSAO = "V5.7-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -268,7 +268,6 @@ def sanitizar_xml_bytes(raw: bytes) -> bytes:
     return raw
 
 def sanitizar_texto_livre(texto: str) -> str:
-    """Remove caracteres que quebram o leiaute pipe-delimitado."""
     if not texto:
         return texto
     return texto.replace("|", "/").replace("\n", " ").replace("\r", " ")
@@ -791,7 +790,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
 def gerar_registro_0000(cnpj_empresa: str) -> str:
     return pipe_join(["0000", cnpj_empresa])
 
-# ── V5.6: campo 19 (Data cadastro) = DATA_CADASTRO_FIXO ──────────────────────
 def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     if is_importacao and dest is not None:
         inscricao   = ""
@@ -835,7 +833,7 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     c[4]=logradouro; c[5]=numero; c[6]=complemento; c[7]=bairro
     c[8]=cod_mun; c[9]=uf_campo; c[10]=cod_pais; c[11]=cep
     c[12]=ie; c[13]=""; c[14]=""; c[15]=""
-    c[16]=""; c[17]=""; c[18]=DATA_CADASTRO_FIXO  # ── V5.6: campo 19 data cadastro
+    c[16]=""; c[17]=""; c[18]=DATA_CADASTRO_FIXO
     c[19]=""
     c[20]=""; c[21]="N"; c[22]="7"; c[23]=regime
     c[24]=contrib; c[25]=""; c[26]=""; c[27]=""
@@ -874,7 +872,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
     c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""; c[20]=cst_icms; c[21]=aliq_icms
     c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26,74): c[i]=""
-    c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
+    c[74]=DATA_CADASTRO_FIXO
     for i in range(75,88): c[i]=""
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
@@ -915,7 +913,6 @@ def extrair_pis_cofins(det, importacao: bool = False,
         res["class_trib"] = get_text(ibs_node,"nfe:cClassTrib")
     return res
 
-# ── V5.6: campo 2 = "Inicial" (descrição da vigência) ────────────────────────
 def gerar_registro_0110(det, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
                          tem_direito_credito: bool = True) -> str:
@@ -926,7 +923,7 @@ def gerar_registro_0110(det, importacao: bool = False,
     vinculo_credito = "08" if importacao else ""
     c = [""] * 70
     c[0]="0110"
-    c[1]="Inicial"           # ── V5.6: campo 2 — descrição da vigência
+    c[1]="Inicial"
     c[2]=pc["cst_e"]; c[3]=vinculo_credito
     c[4]="01"; c[5]="N"; c[6]="N"; c[7]=pc["aliq_pis_e"]; c[8]=pc["aliq_cof_e"]
     c[9]="N"; c[10]="N"; c[11]=""; c[12]=""; c[13]=""; c[14]=""
@@ -939,7 +936,6 @@ def gerar_registro_0110(det, importacao: bool = False,
     c[66]=ct; c[67]=ct; c[68]="N"; c[69]="N"
     return pipe_join(c)
 
-# ── V5.6: obs_fisco sanitizado ────────────────────────────────────────────────
 def gerar_registro_1000(nfe_root, cnpj_empresa: str,
                         acumulador: str = "1157", especie: str = "36",
                         importacao: bool = False) -> str:
@@ -953,7 +949,10 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ") if emit is not None else ""
         ie_forn   = get_text(emit, "nfe:IE")   if emit is not None else ""
-    emitente_nf = "T"
+
+    # ── V5.7: Para importacao, emitente = "P" (Proprio); para demais = "T" (Terceiros) ──
+    emitente_nf = "P" if importacao else "T"
+
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
     dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
@@ -1195,7 +1194,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                             valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
     return linhas
 
-# ── V5.6: campos 18 e 19 (frete e seguro por item) mapeados do XML ────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
                          tem_direito_credito: bool = True) -> str:
@@ -1212,10 +1210,8 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     unidade  = get_text(prod,"nfe:uCom")
     v_unit   = get_text(prod,"nfe:vUnCom")
     cest     = get_text(prod,"nfe:CEST")
-    # ── V5.6: frete e seguro por item ────────────────────────────────────────
     v_frete_item = fmt_decimal(get_text(prod, "nfe:vFrete"))
     v_seg_item   = fmt_decimal(get_text(prod, "nfe:vSeg"))
-    # ─────────────────────────────────────────────────────────────────────────
     di_node  = prod.find("nfe:DI", NS)
     n_di = somente_numeros(get_text(di_node,"nfe:nDI")) if di_node is not None else ""
     d_di = fmt_date(get_text(di_node,"nfe:dDI"))        if di_node is not None else ""
@@ -1303,8 +1299,8 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[5]=fmt_decimal(v_prod); c[6]="1"; c[7]=d_di; c[8]=n_di; c[9]=cst_icms
     c[10]=fmt_decimal(v_prod); c[11]=fmt_decimal(v_desc); c[12]=v_bc_icms
     c[13]=v_bc_st; c[14]=aliq_icms; c[15]=""; c[16]=""
-    c[17]=v_frete_item   # ── V5.6: campo 18 — valor frete por item (<vFrete>)
-    c[18]=v_seg_item     # ── V5.6: campo 19 — valor seguro por item (<vSeg>)
+    c[17]=v_frete_item
+    c[18]=v_seg_item
     c[19]=fmt_decimal(v_outro); c[20]=""; c[21]=v_icms; c[22]=""; c[23]=""
     c[24]=""; c[25]=""; c[26]=fmt_decimal(v_unit,6); c[27]=""; c[28]=cst_ipi
     c[29]=aliq_ipi; c[30]=""; c[31]=""; c[32]=""; c[33]=cfop; c[34]=""
@@ -1415,7 +1411,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
         "CNPJ Empresa":   cnpj_empresa,
         "Origem CNPJ":    origem_cnpj,
         "Importacao":     "Sim" if importacao else "Nao",
-        "Emitente NF":    "T (Terceiros)",
+        "Emitente NF":    "P (Proprio)" if importacao else "T (Terceiros)",
         "Emissao":        fmt_date(get_text(ide, "nfe:dhEmi")),
         "Itens":          len(det_list),
         "vNF":            fmt_decimal(get_text(total, "nfe:vNF")),
@@ -1561,19 +1557,21 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V5.7-FINAL — Emitente NF corrigido para importacao</h4>
+        <ul>
+          <li><b>1000 campo 17 (Emitente NF)</b>: Para notas de importacao, agora gera <b>"P" (Proprio)</b>
+          em vez de "T" (Terceiros). Para demais notas permanece "T".</li>
+          <li>O resumo exibido na tela tambem foi atualizado para refletir corretamente "P (Proprio)"
+          ou "T (Terceiros)".</li>
+        </ul>
         <h4>V5.6-FINAL — Correcoes de leiaute confirmadas pelos arquivos oficiais</h4>
         <ul>
           <li><b>0020 campo 19</b>: Data do cadastro preenchida com DATA_CADASTRO_FIXO.</li>
-          <li><b>0110 campo 2</b>: Descricao da vigencia = "Inicial" (era DATA_CADASTRO_FIXO).</li>
+          <li><b>0110 campo 2</b>: Descricao da vigencia = "Inicial".</li>
           <li><b>1030 campo 18</b>: Valor do frete por item mapeado de &lt;vFrete&gt; do XML.</li>
           <li><b>1030 campo 19</b>: Valor do seguro por item mapeado de &lt;vSeg&gt; do XML.</li>
         </ul>
         <h4>V5.5-FINAL — Sanitizacao de pipe (|) em campos de texto livre</h4>
-        <ul>
-          <li><b>sanitizar_texto_livre()</b>: substitui | por / e remove \\n/\\r.</li>
-          <li><b>1010 / 1015</b>: sanitizacao antes de fatiar em blocos de 300 chars.</li>
-          <li><b>1000 campo 15</b>: sanitizacao no campo obs_fisco.</li>
-        </ul>
         <h4>V5.4-FINAL — CNPJ vazio para fornecedor estrangeiro</h4>
         <h4>V5.3-FINAL — Chave NF-e cascata robusta + normalizar_nfe_root</h4>
         <h4>V5.2-FINAL — emitente_nf="T" sempre para NF de entrada</h4>
@@ -1822,6 +1820,7 @@ if uploaded_files:
                         f'<br><small>Aliq. PIS pad: {r.get("Aliq PIS Pad","")} | '
                         f'COFINS pad: {r.get("Aliq COF Pad","")}</small>'
                         f'<br><small>Acumulador: <b>{r.get("Acumulador","")}</b> | {cred_info}</small>'
+                        f'<br><small>Emitente NF: <b>{r.get("Emitente NF","")}</b></small>'
                         f'<br><small>Chave: {r.get("Chave NF-e","")[:22]}...</small>'
                         f'</div>', unsafe_allow_html=True)
 
