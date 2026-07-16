@@ -908,7 +908,8 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
 def gerar_registro_0100(det, grupo_padrao: int = 0,
                          conta_cfop_map: dict = None) -> str:
     """
-    V5.12: campo 68 (índice 67) = SPED Tipo do item
+    V5.12: campo 68 (índice 67) = SPED Tipo do item — baseado nos 3 últimos dígitos da CFOP
+    V5.12: campo 9  (índice 8)  = Grupo de Produtos — derivado automaticamente do SPED Tipo do item
     V5.9/V5.10: campo 70 (índice 69) = SPED Conta Contábil estoque Em seu poder
     """
     prod = det.find("nfe:prod", NS)
@@ -921,7 +922,6 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     val_unit  = get_text(prod,"nfe:vUnCom")
     cest      = get_text(prod,"nfe:CEST")
     cfop      = get_text(prod,"nfe:CFOP")
-    cod_grupo = detectar_grupo(cfop, ncm, grupo_padrao)
     imposto   = det.find("nfe:imposto", NS)
     cst_icms  = aliq_icms = aliq_ipi = ""
     if imposto is not None:
@@ -937,36 +937,59 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib,"nfe:pIPI"))
 
-    # ── V5.12: SPED Tipo do item (campo 68 / índice 67) — baseado nos 3 últimos dígitos da CFOP
-    # Tabela conforme imagem oficial: Final CFOP → Tipo SPED
+    # ── V5.12: SPED Tipo do item (campo 68 / índice 67)
+    # Baseado nos 3 últimos dígitos da CFOP conforme tabela oficial (imagem)
     cfop_final = cfop[-3:] if len(cfop) >= 3 else cfop
     CFOP_TIPO_SPED = {
-        "102": "0",  # Compra p/ comercialização → Mercadoria
-        "202": "0",
-        "302": "0",
-        "101": "1",  # Compra p/ industrialização → Matéria Prima
-        "201": "1",
-        "301": "1",
-        "111": "1",  # Compra p/ industrialização - Devol. → Matéria Prima
-        "211": "1",
-        "116": "8",  # Compra p/ industrialização - Ativo → Ativo Imobilizado
-        "216": "8",
-        "122": "8",  # Compra p/ comercialização - Ativo → Ativo Imobilizado
-        "222": "8",
-        "551": "8",  # Compra de bem p/ ativo imobilizado → Ativo Imobilizado
-        "651": "8",
-        "556": "7",  # Compra de material de uso e consumo → Mat. Uso e Consumo
-        "656": "7",
-        "553": "7",  # Material de uso e consumo → Mat. Uso e Consumo
-        "125": "5",  # Compra p/ industrialização - Embalagem → Embalagem
-        "225": "5",
-        "126": "7",  # Compra p/ uso e consumo → Mat. Uso e Consumo
-        "226": "7",
-        "933": "9",  # Serviços → Serviços
-        "352": "6",  # Subprodutos → Subproduto
-        "353": "6",
+        # Compra p/ comercialização → 0 = Mercadoria
+        "102": "0", "202": "0", "302": "0",
+        # Compra p/ industrialização → 1 = Matéria Prima
+        "101": "1", "201": "1", "301": "1",
+        # Compra p/ industrialização - Devolução → 1 = Matéria Prima
+        "111": "1", "211": "1",
+        # Compra p/ comercialização - Ativo → 8 = Ativo Imobilizado
+        "116": "8", "216": "8", "122": "8", "222": "8",
+        # Compra de bem p/ ativo imobilizado → 8 = Ativo Imobilizado
+        "551": "8", "651": "8",
+        # Compra de material de uso e consumo → 7 = Mat. Uso e Consumo
+        "553": "7", "556": "7", "656": "7",
+        # Compra p/ industrialização - Embalagem → 5 = Embalagem
+        "125": "5", "225": "5",
+        # Compra p/ uso e consumo → 7 = Mat. Uso e Consumo
+        "126": "7", "226": "7",
+        # Serviços → 9 = Serviços
+        "933": "9",
+        # Subprodutos → 6 = Subproduto
+        "352": "6", "353": "6",
     }
     sped_tipo_item = CFOP_TIPO_SPED.get(cfop_final, "")
+
+    # ── V5.12: Grupo de Produtos (campo 9 / índice 8)
+    # Derivado automaticamente do SPED Tipo do item quando grupo_padrao == 0 (Automático)
+    # Mapeamento: SPED Tipo → Grupo Domínio (TABELA_GRUPOS)
+    SPED_TIPO_PARA_GRUPO = {
+        "0":  2,   # Mercadoria → MERCADORIA PARA REVENDA
+        "1":  3,   # Matéria Prima → MATERIA PRIMA
+        "2":  8,   # Produto Intermediário → PRODUTOS INTERMEDIARIOS
+        "3":  5,   # Produto em Fabricação → PRODUTO EM PROCESSO
+        "4":  6,   # Produto Acabado → PRODUTO ACABADO
+        "5":  4,   # Embalagem → EMBALAGENS
+        "6":  7,   # Subproduto → SUBPRODUTO
+        "7":  9,   # Mat. Uso e Consumo → MATERIAL DE USO E CONSUMO
+        "8":  10,  # Ativo Imobilizado → ATIVO IMOBILIZADO
+        "9":  11,  # Serviços → SERVICOS
+        "10": 12,  # Outros Insumos → OUTROS INSUMOS
+        "99": 1,   # Outros → GERAL
+    }
+    if grupo_padrao > 0:
+        # Usuário escolheu manualmente na sidebar → respeita a escolha
+        cod_grupo = grupo_padrao
+    elif sped_tipo_item:
+        # Deriva do SPED Tipo do item (que já veio da CFOP)
+        cod_grupo = SPED_TIPO_PARA_GRUPO.get(sped_tipo_item, 1)
+    else:
+        # Fallback: lógica anterior por CFOP/NCM
+        cod_grupo = detectar_grupo(cfop, ncm, 0)
 
     # ── V5.9/V5.10: Conta Contábil Estoque – Em seu poder (campo 70 / índice 69)
     if conta_cfop_map is None:
@@ -981,7 +1004,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     c[20]=cst_icms; c[21]=aliq_icms; c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26, 67): c[i]=""
     c[67]=sped_tipo_item   # ── V5.12: campo 68 — SPED Tipo do item
-    c[68]=""               # campo 69 — SPED Classificação
+    c[68]=""               # campo 69 — SPED Classificação (não preenchido)
     c[69]=conta_contabil   # ── V5.9/V5.10: campo 70 — SPED Conta Contábil estoque Em seu poder
     for i in range(70, 74): c[i]=""
     c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
