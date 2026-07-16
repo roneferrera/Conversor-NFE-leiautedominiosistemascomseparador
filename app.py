@@ -16,9 +16,6 @@ except ImportError:
 VERSAO = "V5.11-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
-# ─────────────────────────────────────────────
-# TEMA
-# ─────────────────────────────────────────────
 def apply_tr_theme():
     st.markdown("""
         <style>
@@ -67,9 +64,6 @@ st.markdown(f"""
 
 NS = {"nfe": "http://www.portalfiscal.inf.br/nfe"}
 
-# ─────────────────────────────────────────────
-# TABELAS
-# ─────────────────────────────────────────────
 TABELA_GRUPOS = {
     0:  "Automatico (por CFOP/NCM)",
     1:  "GERAL",
@@ -535,7 +529,7 @@ def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
     return False
 
 # ─────────────────────────────────────────────
-# EXTRAÇÃO DE DADOS PARA EXCEL
+# EXTRAÇÃO EXCEL
 # ─────────────────────────────────────────────
 def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
                                   aliq_pis_pad: float = 0.0,
@@ -642,7 +636,7 @@ def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
     return linhas
 
 # ─────────────────────────────────────────────
-# EXCEL — V5.11: destaque de alíquota reduzida
+# EXCEL — V5.11: linha inteira colorida
 # ─────────────────────────────────────────────
 def gerar_excel_relatorio(dados_itens: list) -> bytes:
     wb = openpyxl.Workbook()
@@ -666,10 +660,10 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     thin         = Side(style="thin", color="CCCCCC")
     border       = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    # ── V5.11: fills de destaque
-    green_fill   = PatternFill("solid", fgColor="E8F5E9")   # verde  = crédito PIS/COFINS
-    yellow_fill  = PatternFill("solid", fgColor="FFF9C4")   # amarelo= alíquota REDUZIDA
-    orange_fill  = PatternFill("solid", fgColor="FFF3E0")   # laranja= alíquota DIFERENTE
+    # ── V5.11: fills de destaque para linha inteira
+    green_fill   = PatternFill("solid", fgColor="E8F5E9")  # verde  = credito PIS/COFINS
+    yellow_fill  = PatternFill("solid", fgColor="FFF9C4")  # amarelo= aliquota REDUZIDA
+    orange_fill  = PatternFill("solid", fgColor="FFF3E0")  # laranja= aliquota DIFERENTE
 
     if not dados_itens:
         ws["A1"] = "Nenhum dado disponivel."
@@ -719,13 +713,12 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         "V. PIS","BC COFINS","Aliq. COFINS %","V. COFINS","Aliq. PIS Padrao","Aliq. COF Padrao"
     }
 
-    # Linhas de dados
+    # ── V5.11: Linhas de dados — cor definida para a LINHA INTEIRA
     for ri, row in enumerate(dados_itens, start=3):
         fill_base = alt_fill if ri % 2 == 1 else alt_fill2
         pis_cred  = row.get("PIS c/ Credito") == "SIM"
         cof_cred  = row.get("COF c/ Credito") == "SIM"
 
-        # ── V5.11: detecta alíquota reduzida / diferente vs. padrão da nota
         aliq_pis_row = row.get("Aliq. PIS %", 0.0)
         aliq_cof_row = row.get("Aliq. COFINS %", 0.0)
         aliq_pis_pad = row.get("Aliq. PIS Padrao", 0.0)
@@ -736,31 +729,22 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         pis_diferente = (aliq_pis_pad > 0 and aliq_pis_row != aliq_pis_pad and not pis_reduzida)
         cof_diferente = (aliq_cof_pad > 0 and aliq_cof_row != aliq_cof_pad and not cof_reduzida)
 
+        # Prioridade: verde > amarelo > laranja > zebrado
+        if pis_cred or cof_cred:
+            row_fill = green_fill
+        elif pis_reduzida or cof_reduzida:
+            row_fill = yellow_fill
+        elif pis_diferente or cof_diferente:
+            row_fill = orange_fill
+        else:
+            row_fill = fill_base
+
         for ci, col in enumerate(colunas, start=1):
             val  = row[col]
             cell = ws.cell(row=ri, column=ci, value=val)
             cell.border    = border
             cell.alignment = center if col in cols_num else left
-
-            # ── Prioridade de coloração
-            if col in ("CST PIS (Efet)","BC PIS","Aliq. PIS %","V. PIS","CST PIS (XML)") and pis_cred:
-                cell.fill = green_fill
-            elif col in ("CST COF (Efet)","BC COFINS","Aliq. COFINS %","V. COFINS","CST COF (XML)") and cof_cred:
-                cell.fill = green_fill
-            elif col in ("PIS c/ Credito","COF c/ Credito") and val == "SIM":
-                cell.fill = green_fill
-            # ── V5.11: alíquota reduzida (amarelo)
-            elif col in ("Aliq. PIS %","BC PIS","V. PIS") and pis_reduzida and not pis_cred:
-                cell.fill = yellow_fill
-            elif col in ("Aliq. COFINS %","BC COFINS","V. COFINS") and cof_reduzida and not cof_cred:
-                cell.fill = yellow_fill
-            # ── V5.11: alíquota diferente do padrão (laranja)
-            elif col in ("Aliq. PIS %","BC PIS","V. PIS") and pis_diferente and not pis_cred:
-                cell.fill = orange_fill
-            elif col in ("Aliq. COFINS %","BC COFINS","V. COFINS") and cof_diferente and not cof_cred:
-                cell.fill = orange_fill
-            else:
-                cell.fill = fill_base
+            cell.fill      = row_fill  # ── linha inteira com a mesma cor
 
             if col in cols_num and isinstance(val, float):
                 cell.number_format = '#,##0.0000' if ("Aliq" in col or "Padrao" in col) else '#,##0.00'
@@ -783,9 +767,9 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     leg_row = tot_row + 2
     ws.cell(row=leg_row, column=1, value="LEGENDA DE CORES").font = Font(bold=True, color="FF8000", size=10)
     legendas = [
-        ("Verde",   green_fill,  "CST convertido para entrada com direito a credito PIS/COFINS"),
-        ("Amarelo", yellow_fill, "Aliquota PIS/COFINS REDUZIDA em relacao ao padrao majoritario da nota"),
-        ("Laranja", orange_fill, "Aliquota PIS/COFINS DIFERENTE do padrao da nota (acima ou distinta)"),
+        ("Verde",   green_fill,  "Linha inteira: CST convertido para entrada com direito a credito PIS/COFINS"),
+        ("Amarelo", yellow_fill, "Linha inteira: Aliquota PIS/COFINS REDUZIDA em relacao ao padrao majoritario da nota"),
+        ("Laranja", orange_fill, "Linha inteira: Aliquota PIS/COFINS DIFERENTE do padrao da nota (acima ou distinta)"),
     ]
     for i, (nome, fill, desc) in enumerate(legendas, start=1):
         c1 = ws.cell(row=leg_row + i, column=1, value=nome)
@@ -797,7 +781,7 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
             end_row=leg_row+i,   end_column=6
         )
 
-    # Larguras das colunas
+    # Larguras
     larguras = {
         "Arquivo":22,"NF":10,"Emissao":12,"Fornecedor":30,"Chave NF-e":46,"Item":6,
         "Cod. Produto":18,"Descricao":50,"NCM":12,"CFOP":8,"Qtd":10,"V. Unit.":14,
@@ -841,20 +825,20 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     for aliq, d in sorted(pis_ag.items()):
         if d["val"] > 0 or d["bc"] > 0:
             cst_desc  = TABELA_CST_PIS_COFINS_ENTRADA.get(d["cst"], d["cst"])
-            row_fill  = green_fill if d["cst"] in ("50","51","52") else alt_fill2
+            row_fill2 = green_fill if d["cst"] in ("50","51","52") else alt_fill2
             for ci, v in enumerate(["PIS", d["bc"], aliq, d["val"], d["cst"], cst_desc], start=1):
                 c = ws2.cell(row=ri2, column=ci, value=v)
-                c.border = border; c.alignment = center; c.fill = row_fill
+                c.border = border; c.alignment = center; c.fill = row_fill2
                 if ci in (2,3,4):
                     c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
             ri2 += 1
     for aliq, d in sorted(cof_ag.items()):
         if d["val"] > 0 or d["bc"] > 0:
             cst_desc  = TABELA_CST_PIS_COFINS_ENTRADA.get(d["cst"], d["cst"])
-            row_fill  = green_fill if d["cst"] in ("50","51","52") else alt_fill2
+            row_fill2 = green_fill if d["cst"] in ("50","51","52") else alt_fill2
             for ci, v in enumerate(["COFINS", d["bc"], aliq, d["val"], d["cst"], cst_desc], start=1):
                 c = ws2.cell(row=ri2, column=ci, value=v)
-                c.border = border; c.alignment = center; c.fill = row_fill
+                c.border = border; c.alignment = center; c.fill = row_fill2
                 if ci in (2,3,4):
                     c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
             ri2 += 1
@@ -958,9 +942,9 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""
     c[20]=cst_icms; c[21]=aliq_icms; c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26,69): c[i]=""
-    c[69]=conta_contabil          # campo 70 — SPED Conta Contábil estoque Em seu poder
+    c[69]=conta_contabil   # campo 70 — SPED Conta Contabil estoque Em seu poder
     for i in range(70,74): c[i]=""
-    c[74]=DATA_CADASTRO_FIXO      # campo 75 — data cadastro
+    c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
     for i in range(75,88): c[i]=""
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
@@ -1034,7 +1018,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ") if emit is not None else ""
         ie_forn   = get_text(emit, "nfe:IE")   if emit is not None else ""
-    emitente_nf = "P" if importacao else "T"   # V5.7
+    emitente_nf = "P" if importacao else "T"  # V5.7
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
     dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
@@ -1375,7 +1359,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
         v_total = fmt_decimal(v_prod)
     vinculo_pis = "08" if importacao else ""
     vinculo_cof = "08" if importacao else ""
-    # V5.8: motivo desoneração
     mot_des_campo = ""
     if v_icms_des and safe_float(v_icms_des.replace(",",".")) > 0:
         mot_des_campo = mot_des_icms if mot_des_icms else "9"
@@ -1401,8 +1384,8 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[80]=""; c[81]=""; c[82]=""; c[83]=""; c[84]=""; c[85]=""; c[86]=""
     c[87]=""; c[88]=""; c[89]=""; c[90]=cest; c[91]=""; c[92]=""; c[93]=""
     c[94]=""; c[95]=""
-    c[96]=v_icms_des       # V5.8: campo 97 — Valor Desonerado
-    c[97]=mot_des_campo    # V5.8: campo 98 — Motivo Desoneração
+    c[96]=v_icms_des    # V5.8: campo 97 — Valor Desonerado
+    c[97]=mot_des_campo # V5.8: campo 98 — Motivo Desoneração
     c[98]=""; c[99]=""
     c[100]=""; c[101]=""; c[102]=""
     c[103]=ibs_class_trib; c[104]=ibs_bc; c[105]=ibs_aliq; c[106]=ibs_val
@@ -1652,19 +1635,20 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V5.11-FINAL — Destaque de aliquota reduzida no Excel</h4>
+        <h4>V5.11-FINAL — Coloracao da linha inteira no Excel</h4>
         <ul>
-          <li><b>Verde</b>: CST convertido de saida para entrada com direito a credito PIS/COFINS.</li>
-          <li><b>Amarelo</b>: Aliquota PIS/COFINS <b>REDUZIDA</b> em relacao ao padrao majoritario da nota.</li>
-          <li><b>Laranja</b>: Aliquota PIS/COFINS <b>DIFERENTE</b> do padrao da nota (acima ou distinta).</li>
-          <li>Legenda de cores adicionada ao final da planilha Excel.</li>
+          <li><b>Verde (linha inteira)</b>: CST convertido para entrada com direito a credito PIS/COFINS.</li>
+          <li><b>Amarelo (linha inteira)</b>: Aliquota PIS/COFINS REDUZIDA em relacao ao padrao majoritario da nota.</li>
+          <li><b>Laranja (linha inteira)</b>: Aliquota PIS/COFINS DIFERENTE do padrao da nota (acima ou distinta).</li>
+          <li>Legenda de cores adicionada ao final da planilha.</li>
+          <li>Prioridade: Verde > Amarelo > Laranja > Zebrado normal.</li>
         </ul>
         <h4>V5.10-FINAL — Consolidacao de todas as correcoes anteriores</h4>
         <ul>
           <li><b>V5.7</b>: 1000 campo 17 = "P" para importacao, "T" para demais.</li>
           <li><b>V5.8</b>: 1030 campo 97 = Valor Desonerado; campo 98 = Motivo Desoneração.</li>
           <li><b>V5.9/V5.10</b>: 0100 campo 70 = Conta Contabil Estoque configuravel por CFOP.</li>
-          <li><b>V5.6</b>: 0020 campo 19 = Data cadastro; 0110 campo 2 = "Inicial"; 1030 campos 18/19 = frete/seguro por item.</li>
+          <li><b>V5.6</b>: 0020/0110/1030 correcoes de leiaute.</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
