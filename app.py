@@ -13,7 +13,7 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.11-FINAL"
+VERSAO = "V5.12-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -100,13 +100,13 @@ TABELA_CST_PIS_COFINS_ENTRADA = {
     "54": "54 - Op. com Direito a Credito - Vinc. a Rec. Tributadas e de Exportacao",
     "55": "55 - Op. com Direito a Credito - Vinc. a Rec. Nao-Tributadas e Exportacao",
     "56": "56 - Op. com Direito a Credito - Vinc. a Rec. Tributadas, Nao-Tributadas e Exportacao",
-    "60": "60 - Credito Presumido - Op. de Aquisicao Vinc. Excl. a Rec. Tributada Nao-Cumulativo",
-    "61": "61 - Credito Presumido - Op. de Aquisicao Vinc. Excl. a Rec. Nao-Tributada",
-    "62": "62 - Credito Presumido - Op. de Aquisicao Vinc. Excl. a Rec. de Exportacao",
-    "63": "63 - Credito Presumido - Op. de Aquisicao Vinc. a Rec. Nao-Tributadas e Exportacao",
-    "64": "64 - Credito Presumido - Op. de Aquisicao Vinc. a Rec. Tributadas e Nao-Tributadas",
-    "65": "65 - Credito Presumido - Op. de Aquisicao Vinc. a Rec. Tributadas e de Exportacao",
-    "66": "66 - Credito Presumido - Op. de Aquisicao Vinc. a Rec. Trib., Nao-Trib. e Exportacao",
+    "60": "60 - Credito Presumido - Aquisicao Vinc. Excl. a Rec. Tributada Nao-Cumulativo",
+    "61": "61 - Credito Presumido - Aquisicao Vinc. Excl. a Rec. Nao-Tributada",
+    "62": "62 - Credito Presumido - Aquisicao Vinc. Excl. a Rec. de Exportacao",
+    "63": "63 - Credito Presumido - Aquisicao Vinc. a Rec. Nao-Tributadas e Exportacao",
+    "64": "64 - Credito Presumido - Aquisicao Vinc. a Rec. Tributadas e Nao-Tributadas",
+    "65": "65 - Credito Presumido - Aquisicao Vinc. a Rec. Tributadas e de Exportacao",
+    "66": "66 - Credito Presumido - Aquisicao Vinc. a Rec. Trib., Nao-Trib. e Exportacao",
     "67": "67 - Credito Presumido - Outras Operacoes",
     "70": "70 - Op. de Aquisicao sem Direito a Credito",
     "71": "71 - Op. de Aquisicao com Isencao",
@@ -156,6 +156,67 @@ CFOP_DESCRICAO = {
     "3556": "Compra p/ industrializacao originada de encomenda",
     "3930": "Lancamento sob regime aduaneiro especial",
     "3949": "Outra entrada nao especificada",
+}
+
+# ── V5.12: Mapeamento mod XML → espécie Domínio (Relação de Espécies)
+MOD_PARA_ESPECIE = {
+    "55": "36",  # NF-e → Nota Fiscal Eletrônica
+    "65": "41",  # NFC-e
+    "57": "38",  # CT-e
+    "67": "45",  # CT-e OS
+    "58": "39",  # NFS-e
+    "01": "1",   # NF modelo 01
+    "1B": "2",   # NF Avulsa
+    "02": "3",   # NF Venda Consumidor
+    "04": "6",   # NF Produtor
+    "06": "7",   # NF Energia Elétrica
+    "07": "8",   # NF Serviço Transporte
+    "08": "9",   # Conhec. Transp. Rod.
+    "8B": "10",  # Conhec. Transp. Avulso
+    "09": "11",  # Conhec. Transp. Aquav.
+    "10": "12",  # Conhecimento Aéreo
+    "11": "13",  # Conhec. Transp. Ferrov.
+    "13": "18",  # Despacho Transporte
+    "14": "19",  # Resumo Movimento Diário
+    "15": "20",  # Ordem Coleta
+    "21": "21",  # NF Serviço Comunicação
+    "22": "22",  # NF Serviço Telecom.
+    "28": "27",  # NF Água Canalizada
+    "29": "28",  # NF Gás Canalizado
+    "03": "31",  # NF Serviços
+    "3A": "32",  # NF Serviços Simplif.
+    "3B": "33",  # NF Serviços Avulso
+}
+
+# ── V5.12: SPED Tipo do item por CFOP (3 últimos dígitos)
+CFOP_TIPO_SPED = {
+    "102": "0", "202": "0", "302": "0",   # Mercadoria para Revenda
+    "101": "1", "201": "1", "301": "1",   # Matéria Prima
+    "111": "1", "211": "1",               # Devolução industrialização
+    "116": "8", "216": "8",               # Ativo Imobilizado
+    "122": "8", "222": "8",               # Ativo Imobilizado
+    "551": "8", "651": "8",               # Compra bem ativo imobilizado
+    "553": "7", "556": "7", "656": "7",   # Mat. Uso e Consumo
+    "125": "5", "225": "5",               # Embalagem
+    "126": "7", "226": "7",               # Uso e Consumo
+    "933": "9",                           # Serviços
+    "352": "6", "353": "6",               # Subproduto
+}
+
+# ── V5.12: SPED Tipo → Grupo Domínio
+SPED_TIPO_PARA_GRUPO = {
+    "0":  2,   # Mercadoria → MERCADORIA PARA REVENDA
+    "1":  3,   # Matéria Prima → MATERIA PRIMA
+    "2":  8,   # Produto Intermediário → PRODUTOS INTERMEDIARIOS
+    "3":  5,   # Produto em Fabricação → PRODUTO EM PROCESSO
+    "4":  6,   # Produto Acabado → PRODUTO ACABADO
+    "5":  4,   # Embalagem → EMBALAGENS
+    "6":  7,   # Subproduto → SUBPRODUTO
+    "7":  9,   # Mat. Uso e Consumo → MATERIAL DE USO E CONSUMO
+    "8":  10,  # Ativo Imobilizado → ATIVO IMOBILIZADO
+    "9":  11,  # Serviços → SERVICOS
+    "10": 12,  # Outros Insumos → OUTROS INSUMOS
+    "99": 1,   # Outros → GERAL
 }
 
 PAISES_BACEN_PARA_DOMINIO = {
@@ -370,6 +431,12 @@ def parse_xml_seguro(raw_bytes: bytes):
     except ET.ParseError as e:
         return None, f"XML invalido: {e}"
 
+def detectar_especie_por_mod(nfe_root) -> str:
+    """V5.12: detecta espécie automaticamente pelo campo <mod> do XML."""
+    ide = nfe_root.find("nfe:infNFe/nfe:ide", NS)
+    mod = get_text(ide, "nfe:mod") if ide is not None else ""
+    return MOD_PARA_ESPECIE.get(mod, "36")
+
 def extrair_cfops_importacao_dos_arquivos(arquivos: list) -> list:
     cfops = set()
     for arq in arquivos:
@@ -456,32 +523,6 @@ def extrair_xmls_importacao_do_zip(zip_bytes: bytes) -> tuple:
         return [], 0, [], ["Arquivo ZIP invalido ou corrompido."]
     return xmls_importacao, total_xml, ignorados, erros_parse
 
-def get_grupo_por_cfop(cfop: str) -> int:
-    if not cfop:
-        return 1
-    mapa = {"11":2,"12":2,"13":3,"14":3,"15":9,"16":10,"17":11,"20":2,"21":2,"22":3,
-            "25":9,"30":2,"31":3,"35":9,"40":2,"41":2,"55":12,"60":2}
-    return mapa.get(cfop[:2], 1)
-
-def get_grupo_por_ncm(ncm: str) -> int:
-    if not ncm or len(ncm) < 2:
-        return 1
-    mapa = {"84":10,"85":10,"86":10,"87":10,"88":10,"89":10,"90":10,"91":10,"94":10,
-            "28":3,"29":3,"30":3,"31":3,"32":3,"33":3,"34":3,"38":3,"39":3,"40":3,
-            "44":3,"47":3,"48":3,"72":3,"73":3,"74":3,"75":3,"76":3,"82":3,"83":3,
-            "01":2,"02":2,"03":2,"04":2,"07":2,"08":2,"09":2,"10":2,"16":2,"17":2,
-            "18":2,"19":2,"20":2,"21":2,"22":2,"27":2}
-    return mapa.get(ncm[:2], 1)
-
-def detectar_grupo(cfop: str, ncm: str, grupo_padrao: int) -> int:
-    if grupo_padrao > 0:
-        return grupo_padrao
-    g = get_grupo_por_cfop(cfop)
-    if g == 1 and ncm:
-        g2 = get_grupo_por_ncm(ncm)
-        return g2 if g2 != 1 else g
-    return g
-
 def is_nota_importacao(nfe_root) -> bool:
     dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
     if dest is not None:
@@ -495,7 +536,7 @@ def is_nota_importacao(nfe_root) -> bool:
             return True
     return False
 
-def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str) -> tuple:
+def extrair_cnpj_empresa(nfe_root, cnpj_fallback: str = "") -> tuple:
     importacao = is_nota_importacao(nfe_root)
     if not importacao:
         dest = nfe_root.find("nfe:infNFe/nfe:dest", NS)
@@ -636,7 +677,7 @@ def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
     return linhas
 
 # ─────────────────────────────────────────────
-# EXCEL — V5.11: linha inteira colorida
+# EXCEL — V5.11/V5.12: linha inteira colorida
 # ─────────────────────────────────────────────
 def gerar_excel_relatorio(dados_itens: list) -> bytes:
     wb = openpyxl.Workbook()
@@ -659,11 +700,9 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     left         = Alignment(horizontal="left",   vertical="center")
     thin         = Side(style="thin", color="CCCCCC")
     border       = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    # ── V5.11: fills de destaque para linha inteira
-    green_fill   = PatternFill("solid", fgColor="E8F5E9")  # verde  = credito PIS/COFINS
-    yellow_fill  = PatternFill("solid", fgColor="FFF9C4")  # amarelo= aliquota REDUZIDA
-    orange_fill  = PatternFill("solid", fgColor="FFF3E0")  # laranja= aliquota DIFERENTE
+    green_fill   = PatternFill("solid", fgColor="E8F5E9")
+    yellow_fill  = PatternFill("solid", fgColor="FFF9C4")
+    orange_fill  = PatternFill("solid", fgColor="FFF3E0")
 
     if not dados_itens:
         ws["A1"] = "Nenhum dado disponivel."
@@ -690,7 +729,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         for c in cols:
             col_grupo[c] = grp
 
-    # Linha 1 — cabeçalho de grupos
     col_idx = 1
     for grp, cols in grupos.items():
         start = col_idx; end = col_idx + len(cols) - 1
@@ -700,7 +738,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         cell.alignment = center; cell.border = border
         col_idx = end + 1
 
-    # Linha 2 — nomes das colunas
     for ci, col in enumerate(colunas, start=1):
         cell = ws.cell(row=2, column=ci, value=col)
         grp  = col_grupo.get(col, "Identificacao")
@@ -713,7 +750,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         "V. PIS","BC COFINS","Aliq. COFINS %","V. COFINS","Aliq. PIS Padrao","Aliq. COF Padrao"
     }
 
-    # ── V5.11: Linhas de dados — cor definida para a LINHA INTEIRA
     for ri, row in enumerate(dados_itens, start=3):
         fill_base = alt_fill if ri % 2 == 1 else alt_fill2
         pis_cred  = row.get("PIS c/ Credito") == "SIM"
@@ -744,12 +780,10 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
             cell = ws.cell(row=ri, column=ci, value=val)
             cell.border    = border
             cell.alignment = center if col in cols_num else left
-            cell.fill      = row_fill  # ── linha inteira com a mesma cor
-
+            cell.fill      = row_fill
             if col in cols_num and isinstance(val, float):
                 cell.number_format = '#,##0.0000' if ("Aliq" in col or "Padrao" in col) else '#,##0.00'
 
-    # Linha de totais
     tot_row  = len(dados_itens) + 3
     ws.cell(row=tot_row, column=1, value="TOTAL").font = Font(bold=True)
     cols_soma = ["V. Prod.","V. Outro","V. Desc.","BC ICMS","V. ICMS","V. ICMS Deson",
@@ -763,7 +797,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
             cell.value = sum(r[col] for r in dados_itens if isinstance(r[col], float))
             cell.number_format = '#,##0.00'; cell.alignment = center
 
-    # ── V5.11: Legenda de cores
     leg_row = tot_row + 2
     ws.cell(row=leg_row, column=1, value="LEGENDA DE CORES").font = Font(bold=True, color="FF8000", size=10)
     legendas = [
@@ -776,12 +809,8 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         c1.fill = fill; c1.border = border; c1.font = Font(bold=True, size=9)
         c2 = ws.cell(row=leg_row + i, column=2, value=desc)
         c2.border = border
-        ws.merge_cells(
-            start_row=leg_row+i, start_column=2,
-            end_row=leg_row+i,   end_column=6
-        )
+        ws.merge_cells(start_row=leg_row+i, start_column=2, end_row=leg_row+i, end_column=6)
 
-    # Larguras
     larguras = {
         "Arquivo":22,"NF":10,"Emissao":12,"Fornecedor":30,"Chave NF-e":46,"Item":6,
         "Cod. Produto":18,"Descricao":50,"NCM":12,"CFOP":8,"Qtd":10,"V. Unit.":14,
@@ -798,7 +827,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     ws.row_dimensions[2].height = 28
     ws.freeze_panes = "A3"
 
-    # Aba Resumo 1020
     ws2 = wb.create_sheet("Resumo 1020")
     ws2["A1"] = "Resumo das linhas 1020 (agrupado por aliquota)"
     ws2["A1"].font = Font(bold=True, color=laranja, size=11)
@@ -908,8 +936,8 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
 def gerar_registro_0100(det, grupo_padrao: int = 0,
                          conta_cfop_map: dict = None) -> str:
     """
-    V5.12: campo 68 (índice 67) = SPED Tipo do item — baseado nos 3 últimos dígitos da CFOP
-    V5.12: campo 9  (índice 8)  = Grupo de Produtos — derivado automaticamente do SPED Tipo do item
+    V5.12: campo 68 (índice 67) = SPED Tipo do item — por CFOP (3 últimos dígitos)
+    V5.12: campo 9  (índice 8)  = Grupo — derivado do SPED Tipo quando modo Automático
     V5.9/V5.10: campo 70 (índice 69) = SPED Conta Contábil estoque Em seu poder
     """
     prod = det.find("nfe:prod", NS)
@@ -938,63 +966,32 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
             aliq_ipi = fmt_decimal(get_text(ipi_trib,"nfe:pIPI"))
 
     # ── V5.12: SPED Tipo do item (campo 68 / índice 67)
-    # Baseado nos 3 últimos dígitos da CFOP conforme tabela oficial (imagem)
-    cfop_final = cfop[-3:] if len(cfop) >= 3 else cfop
-    CFOP_TIPO_SPED = {
-        # Compra p/ comercialização → 0 = Mercadoria
-        "102": "0", "202": "0", "302": "0",
-        # Compra p/ industrialização → 1 = Matéria Prima
-        "101": "1", "201": "1", "301": "1",
-        # Compra p/ industrialização - Devolução → 1 = Matéria Prima
-        "111": "1", "211": "1",
-        # Compra p/ comercialização - Ativo → 8 = Ativo Imobilizado
-        "116": "8", "216": "8", "122": "8", "222": "8",
-        # Compra de bem p/ ativo imobilizado → 8 = Ativo Imobilizado
-        "551": "8", "651": "8",
-        # Compra de material de uso e consumo → 7 = Mat. Uso e Consumo
-        "553": "7", "556": "7", "656": "7",
-        # Compra p/ industrialização - Embalagem → 5 = Embalagem
-        "125": "5", "225": "5",
-        # Compra p/ uso e consumo → 7 = Mat. Uso e Consumo
-        "126": "7", "226": "7",
-        # Serviços → 9 = Serviços
-        "933": "9",
-        # Subprodutos → 6 = Subproduto
-        "352": "6", "353": "6",
-    }
+    cfop_final     = cfop[-3:] if len(cfop) >= 3 else cfop
     sped_tipo_item = CFOP_TIPO_SPED.get(cfop_final, "")
 
-    # ── V5.12: Grupo de Produtos (campo 9 / índice 8)
-    # Derivado automaticamente do SPED Tipo do item quando grupo_padrao == 0 (Automático)
-    # Mapeamento: SPED Tipo → Grupo Domínio (TABELA_GRUPOS)
-    SPED_TIPO_PARA_GRUPO = {
-        "0":  2,   # Mercadoria → MERCADORIA PARA REVENDA
-        "1":  3,   # Matéria Prima → MATERIA PRIMA
-        "2":  8,   # Produto Intermediário → PRODUTOS INTERMEDIARIOS
-        "3":  5,   # Produto em Fabricação → PRODUTO EM PROCESSO
-        "4":  6,   # Produto Acabado → PRODUTO ACABADO
-        "5":  4,   # Embalagem → EMBALAGENS
-        "6":  7,   # Subproduto → SUBPRODUTO
-        "7":  9,   # Mat. Uso e Consumo → MATERIAL DE USO E CONSUMO
-        "8":  10,  # Ativo Imobilizado → ATIVO IMOBILIZADO
-        "9":  11,  # Serviços → SERVICOS
-        "10": 12,  # Outros Insumos → OUTROS INSUMOS
-        "99": 1,   # Outros → GERAL
-    }
+    # ── V5.12: Grupo de Produtos (campo 9 / índice 8) — derivado do SPED Tipo
     if grupo_padrao > 0:
-        # Usuário escolheu manualmente na sidebar → respeita a escolha
         cod_grupo = grupo_padrao
     elif sped_tipo_item:
-        # Deriva do SPED Tipo do item (que já veio da CFOP)
         cod_grupo = SPED_TIPO_PARA_GRUPO.get(sped_tipo_item, 1)
     else:
-        # Fallback: lógica anterior por CFOP/NCM
-        cod_grupo = detectar_grupo(cfop, ncm, 0)
+        # fallback: lógica anterior por CFOP/NCM
+        g = {"11":2,"12":2,"13":3,"14":3,"15":9,"16":10,"17":11,"20":2,"21":2,"22":3,
+             "25":9,"30":2,"31":3,"35":9,"40":2,"41":2,"55":12,"60":2}.get(cfop[:2], 1) if cfop else 1
+        if g == 1 and ncm and len(ncm) >= 2:
+            g2 = {"84":10,"85":10,"86":10,"87":10,"88":10,"89":10,"90":10,"91":10,"94":10,
+                  "28":3,"29":3,"30":3,"31":3,"32":3,"33":3,"34":3,"38":3,"39":3,"40":3,
+                  "44":3,"47":3,"48":3,"72":3,"73":3,"74":3,"75":3,"76":3,"82":3,"83":3,
+                  "01":2,"02":2,"03":2,"04":2,"07":2,"08":2,"09":2,"10":2,"16":2,"17":2,
+                  "18":2,"19":2,"20":2,"21":2,"22":2,"27":2}.get(ncm[:2], 1)
+            cod_grupo = g2 if g2 != 1 else g
+        else:
+            cod_grupo = g
 
-    # ── V5.9/V5.10: Conta Contábil Estoque – Em seu poder (campo 70 / índice 69)
+    # ── V5.9/V5.10: Conta Contábil Estoque (campo 70 / índice 69)
     if conta_cfop_map is None:
-        conta_cfop_map = {"3102": "55", "3101": "56", "outros": ""}
-    conta_contabil = conta_cfop_map.get(cfop, conta_cfop_map.get("outros", ""))
+        conta_cfop_map = {"3102":"55","3101":"56","outros":""}
+    conta_contabil = conta_cfop_map.get(cfop, conta_cfop_map.get("outros",""))
 
     c = [""] * 91
     c[0]="0100"; c[1]=cod_prod; c[2]=descricao; c[3]=""; c[4]=ncm
@@ -1003,9 +1000,9 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""
     c[20]=cst_icms; c[21]=aliq_icms; c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26, 67): c[i]=""
-    c[67]=sped_tipo_item   # ── V5.12: campo 68 — SPED Tipo do item
-    c[68]=""               # campo 69 — SPED Classificação (não preenchido)
-    c[69]=conta_contabil   # ── V5.9/V5.10: campo 70 — SPED Conta Contábil estoque Em seu poder
+    c[67]=sped_tipo_item   # campo 68 — SPED Tipo do item
+    c[68]=""               # campo 69 — SPED Classificação
+    c[69]=conta_contabil   # campo 70 — SPED Conta Contábil estoque Em seu poder
     for i in range(70, 74): c[i]=""
     c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
     for i in range(75, 88): c[i]=""
@@ -1081,7 +1078,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     else:
         cnpj_forn = get_text(emit, "nfe:CNPJ") if emit is not None else ""
         ie_forn   = get_text(emit, "nfe:IE")   if emit is not None else ""
-    emitente_nf = "P" if importacao else "T"  # V5.7
+    emitente_nf = "P" if importacao else "T"
     nNF      = get_text(ide, "nfe:nNF")
     serie    = get_text(ide, "nfe:serie")
     dhEmi    = fmt_date(get_text(ide, "nfe:dhEmi"))
@@ -1447,8 +1444,8 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[80]=""; c[81]=""; c[82]=""; c[83]=""; c[84]=""; c[85]=""; c[86]=""
     c[87]=""; c[88]=""; c[89]=""; c[90]=cest; c[91]=""; c[92]=""; c[93]=""
     c[94]=""; c[95]=""
-    c[96]=v_icms_des    # V5.8: campo 97 — Valor Desonerado
-    c[97]=mot_des_campo # V5.8: campo 98 — Motivo Desoneração
+    c[96]=v_icms_des
+    c[97]=mot_des_campo
     c[98]=""; c[99]=""
     c[100]=""; c[101]=""; c[102]=""
     c[103]=ibs_class_trib; c[104]=ibs_bc; c[105]=ibs_aliq; c[106]=ibs_val
@@ -1501,7 +1498,7 @@ def gerar_registro_1151(ct, bc, aliq, valor) -> str:
 # ─────────────────────────────────────────────
 # CONVERSOR PRINCIPAL
 # ─────────────────────────────────────────────
-def converter_xml(xml_content: bytes, cnpj_fallback: str,
+def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
                   acumulador: str = "1157", especie: str = "36",
                   incluir_0000: bool = True, incluir_0020: bool = True,
                   incluir_0100: bool = True, incluir_0110: bool = True,
@@ -1516,7 +1513,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
     importacao = is_nota_importacao(nfe)
     cnpj_empresa, origem_cnpj = extrair_cnpj_empresa(nfe, cnpj_fallback)
     if not cnpj_empresa:
-        return "", {"erro": "CNPJ nao encontrado. Para importacao, informe o CNPJ Fallback."}, []
+        return "", {"erro": "CNPJ nao encontrado. Verifique o XML."}, []
     aliq_pis_pad, aliq_cof_pad = calcular_aliquotas_padrao_nota(nfe)
     lines    = []
     det_list = nfe.findall("nfe:infNFe/nfe:det", NS)
@@ -1562,8 +1559,9 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
         "Aliq PIS Pad":   fmt_decimal(str(aliq_pis_pad), 4),
         "Aliq COF Pad":   fmt_decimal(str(aliq_cof_pad), 4),
         "Grupo":          (f"{grupo_padrao} - {TABELA_GRUPOS.get(grupo_padrao,'GERAL')}"
-                           if grupo_padrao > 0 else "Auto (CFOP/NCM)"),
+                           if grupo_padrao > 0 else "Auto (CFOP→SPED Tipo→Grupo)"),
         "Direito Credito": "Sim" if tem_direito_credito else "Nao",
+        "Especie":         especie,
     }
     _conta_map = conta_cfop_map or {"3102":"55","3101":"56","outros":""}
     if incluir_0000:
@@ -1646,7 +1644,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
     return "\n".join(lines), resumo, (aliq_pis_pad, aliq_cof_pad)
 
 # ─────────────────────────────────────────────
-# SIDEBAR
+# SIDEBAR — V5.12: simplificada
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### Info")
@@ -1654,13 +1652,13 @@ with st.sidebar:
     st.markdown("**Thomson Reuters | Dominio Sistemas**")
     st.markdown("---")
     st.markdown("### Parametros")
-    cnpj_fallback = st.text_input(
-        "CNPJ da Empresa (obrigatorio para importacao)", value="", max_chars=14)
-    acumulador = st.text_input("Codigo do Acumulador (fallback)", value="1157")
+    # V5.12: CNPJ e acumulador removidos da sidebar
     tem_direito_credito = st.checkbox(
         "Tem direito a credito de PIS/COFINS", value=True,
         help="Marcado: CST de saida convertido para CST de entrada com credito.")
-    especie = st.text_input("Codigo da Especie", value="36")
+    st.caption("ℹ️ **Especie** detectada automaticamente pelo `<mod>` do XML.")
+    st.caption("ℹ️ **CNPJ** extraido automaticamente do XML (`<emit><CNPJ>`).")
+    st.caption("ℹ️ **Acumulador** gerenciado pelo DE/PARA de CFOPs abaixo.")
     st.markdown("---")
     st.markdown("### Registros de cadastro")
     inc_0000 = st.checkbox("0000 - Identificacao da empresa", value=True)
@@ -1675,6 +1673,7 @@ with st.sidebar:
     st.caption("1020 / 1030 / 1150 / 1151 sempre gerados.")
     st.markdown("---")
     st.markdown("### Grupo de Produtos (0100 campo 9)")
+    st.caption("Modo `0 = Automatico`: CFOP → SPED Tipo → Grupo Dominio.")
     grupo_selecionado = st.selectbox(
         "Grupo", options=list(TABELA_GRUPOS.keys()),
         format_func=lambda x: f"{x} - {TABELA_GRUPOS[x]}" if x > 0 else TABELA_GRUPOS[x],
@@ -1691,6 +1690,13 @@ with st.sidebar:
         for cod, desc in sorted(TABELA_GRUPOS.items()):
             if cod > 0:
                 st.caption(f"`{cod:3d}` - {desc}")
+    with st.expander("SPED Tipo do item (campo 68) — automatico por CFOP"):
+        for cfop_f, tipo in sorted(CFOP_TIPO_SPED.items()):
+            grupo_d = TABELA_GRUPOS.get(SPED_TIPO_PARA_GRUPO.get(tipo, 1), "")
+            st.caption(f"CFOP `x{cfop_f}` → Tipo `{tipo}` → Grupo `{SPED_TIPO_PARA_GRUPO.get(tipo,1)} - {grupo_d}`")
+    with st.expander("Especies automaticas (por mod XML)"):
+        for mod, esp in sorted(MOD_PARA_ESPECIE.items()):
+            st.caption(f"`mod {mod}` → especie `{esp}`")
     with st.expander("Tabela CST PIS/COFINS Entrada"):
         for cst, desc in sorted(TABELA_CST_PIS_COFINS_ENTRADA.items()):
             st.caption(f"`{cst}` - {desc}")
@@ -1698,20 +1704,23 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V5.12-FINAL — Simplificacao da sidebar + automacoes</h4>
+        <ul>
+          <li><b>CNPJ removido da sidebar</b>: extraido automaticamente do XML.</li>
+          <li><b>Acumulador fallback removido</b>: gerenciado 100% pelo DE/PARA de CFOPs.</li>
+          <li><b>Especie automatica</b>: detectada pelo campo &lt;mod&gt; do XML (mod 55 → especie 36 NF-e, mod 65 → 41 NFC-e, etc.).</li>
+          <li><b>SPED Tipo do item (0100 campo 68)</b>: derivado dos 3 ultimos digitos da CFOP.</li>
+          <li><b>Grupo de Produtos (0100 campo 9)</b>: derivado do SPED Tipo quando modo Automatico.</li>
+        </ul>
         <h4>V5.11-FINAL — Coloracao da linha inteira no Excel</h4>
         <ul>
-          <li><b>Verde (linha inteira)</b>: CST convertido para entrada com direito a credito PIS/COFINS.</li>
-          <li><b>Amarelo (linha inteira)</b>: Aliquota PIS/COFINS REDUZIDA em relacao ao padrao majoritario da nota.</li>
-          <li><b>Laranja (linha inteira)</b>: Aliquota PIS/COFINS DIFERENTE do padrao da nota (acima ou distinta).</li>
-          <li>Legenda de cores adicionada ao final da planilha.</li>
-          <li>Prioridade: Verde > Amarelo > Laranja > Zebrado normal.</li>
+          <li>Verde: CST com direito a credito PIS/COFINS (linha inteira).</li>
+          <li>Amarelo: Aliquota PIS/COFINS reduzida vs. padrao da nota (linha inteira).</li>
+          <li>Laranja: Aliquota PIS/COFINS diferente do padrao (linha inteira).</li>
         </ul>
-        <h4>V5.10-FINAL — Consolidacao de todas as correcoes anteriores</h4>
+        <h4>V5.10-FINAL — Consolidacao anterior</h4>
         <ul>
-          <li><b>V5.7</b>: 1000 campo 17 = "P" para importacao, "T" para demais.</li>
-          <li><b>V5.8</b>: 1030 campo 97 = Valor Desonerado; campo 98 = Motivo Desoneração.</li>
-          <li><b>V5.9/V5.10</b>: 0100 campo 70 = Conta Contabil Estoque configuravel por CFOP.</li>
-          <li><b>V5.6</b>: 0020/0110/1030 correcoes de leiaute.</li>
+          <li>V5.7: 1000 campo 17 = "P"/"T". V5.8: 1030 campos 97/98. V5.9/V5.10: 0100 campo 70.</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1785,7 +1794,7 @@ if uploaded_files:
 
     editar_acumuladores = st.toggle(
         "✏️ Alterar acumuladores padrao", value=False,
-        help="Ative para editar o acumulador de cada CFOP de importacao detectada nos XMLs."
+        help="Ative para editar o acumulador de cada CFOP detectada nos XMLs."
     )
 
     if cfops_detectadas:
@@ -1886,6 +1895,9 @@ if uploaded_files:
 
     for i, arq in enumerate(arquivos_para_processar):
         root_tmp, _ = parse_xml_seguro(arq["bytes"])
+        acumulador_nota = "1157"
+        especie_nota    = "36"
+
         if root_tmp is not None:
             nfe_tmp = normalizar_nfe_root(root_tmp)
             try:
@@ -1899,7 +1911,7 @@ if uploaded_files:
                 )
             except Exception:
                 pass
-            acumulador_nota = acumulador
+            # V5.12: acumulador via DE/PARA
             try:
                 det_list_tmp = nfe_tmp.findall("nfe:infNFe/nfe:det", NS)
                 if det_list_tmp:
@@ -1907,16 +1919,19 @@ if uploaded_files:
                         det_list_tmp[0].find("nfe:prod", NS), "nfe:CFOP"
                     ).strip()
                     acumulador_nota = resolver_acumulador_por_cfop(
-                        cfop_primeiro, mapa_acum, acumulador
+                        cfop_primeiro, mapa_acum, "1157"
                     )
             except Exception:
                 pass
-        else:
-            acumulador_nota = acumulador
+            # V5.12: espécie automática pelo <mod>
+            try:
+                especie_nota = detectar_especie_por_mod(nfe_tmp)
+            except Exception:
+                especie_nota = "36"
 
         texto, resumo, _ = converter_xml(
-            arq["bytes"], cnpj_fallback=cnpj_fallback,
-            acumulador=acumulador_nota, especie=especie,
+            arq["bytes"], cnpj_fallback="",
+            acumulador=acumulador_nota, especie=especie_nota,
             incluir_0000=inc_0000, incluir_0020=inc_0020,
             incluir_0100=inc_0100, incluir_0110=inc_0110,
             incluir_1010=inc_1010, incluir_1015=inc_1015,
@@ -1964,7 +1979,8 @@ if uploaded_files:
                         f'<br><small>Aliq. PIS pad: {r.get("Aliq PIS Pad","")} | '
                         f'COFINS pad: {r.get("Aliq COF Pad","")}</small>'
                         f'<br><small>Acumulador: <b>{r.get("Acumulador","")}</b> | {cred_info}</small>'
-                        f'<br><small>Emitente NF: <b>{r.get("Emitente NF","")}</b></small>'
+                        f'<br><small>Emitente NF: <b>{r.get("Emitente NF","")}</b> | '
+                        f'Especie: <b>{r.get("Especie","36")}</b></small>'
                         f'<br><small>Chave: {r.get("Chave NF-e","")[:22]}...</small>'
                         f'</div>', unsafe_allow_html=True)
 
