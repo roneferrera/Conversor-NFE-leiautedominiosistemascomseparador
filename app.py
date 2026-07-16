@@ -13,7 +13,7 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.7-FINAL"
+VERSAO = "V5.10-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -840,7 +840,15 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
     c[28]=""; c[29]="N"; c[30]="N"; c[31]=""; c[32]=""
     return pipe_join(c)
 
-def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
+def gerar_registro_0100(det, grupo_padrao: int = 0,
+                         conta_cfop_map: dict = None) -> str:
+    """
+    V5.9/V5.10: campo 70 (índice 69) = SPED Conta Contábil estoque Em seu poder
+    Sugestão automática por CFOP:
+      3102 → conta configurada pelo usuário (padrão "55" = Mercadoria para Revenda)
+      3101 → conta configurada pelo usuário (padrão "56" = Matéria Prima)
+      outros → conta configurada pelo usuário (padrão vazio)
+    """
     prod      = det.find("nfe:prod", NS)
     if prod is None:
         return ""
@@ -866,13 +874,21 @@ def gerar_registro_0100(det, grupo_padrao: int = 0) -> str:
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib,"nfe:pIPI"))
+
+    # ── V5.9/V5.10: Conta Contábil Estoque – Em seu poder (campo 70 / índice 69)
+    if conta_cfop_map is None:
+        conta_cfop_map = {"3102": "55", "3101": "56", "outros": ""}
+    conta_contabil = conta_cfop_map.get(cfop, conta_cfop_map.get("outros", ""))
+
     c = [""] * 91
     c[0]="0100"; c[1]=cod_prod; c[2]=descricao; c[3]=""; c[4]=ncm; c[5]=""; c[6]=""; c[7]=""
     c[8]=str(cod_grupo); c[9]=unidade; c[10]="N"; c[11]="O"; c[12]=""; c[13]=""; c[14]=""; c[15]="N"
     c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""; c[20]=cst_icms; c[21]=aliq_icms
     c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
-    for i in range(26,74): c[i]=""
-    c[74]=DATA_CADASTRO_FIXO
+    for i in range(26,69): c[i]=""
+    c[69]=conta_contabil  # ── V5.9/V5.10: campo 70 — SPED Conta Contábil estoque Em seu poder
+    for i in range(70,74): c[i]=""
+    c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
     for i in range(75,88): c[i]=""
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
@@ -950,7 +966,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
         cnpj_forn = get_text(emit, "nfe:CNPJ") if emit is not None else ""
         ie_forn   = get_text(emit, "nfe:IE")   if emit is not None else ""
 
-    # ── V5.7: Para importacao, emitente = "P" (Proprio); para demais = "T" (Terceiros) ──
+    # ── V5.7: Para importacao, emitente = "P" (Proprio); para demais = "T" (Terceiros)
     emitente_nf = "P" if importacao else "T"
 
     nNF      = get_text(ide, "nfe:nNF")
@@ -1326,8 +1342,8 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     c[80]=""; c[81]=""; c[82]=""; c[83]=""; c[84]=""; c[85]=""; c[86]=""
     c[87]=""; c[88]=""; c[89]=""; c[90]=cest; c[91]=""; c[92]=""; c[93]=""
     c[94]=""; c[95]=""
-    c[96]=v_icms_des      # ── campo 97: Valor Desonerado
-    c[97]=mot_des_campo   # ── V5.8: campo 98: Motivo da Desoneração (ex: 9 = Outros)
+    c[96]=v_icms_des      # ── V5.8: campo 97 — Valor Desonerado
+    c[97]=mot_des_campo   # ── V5.8: campo 98 — Motivo da Desoneração (9 = Outros)
     c[98]=""; c[99]=""
     c[100]=""; c[101]=""; c[102]=""
     c[103]=ibs_class_trib; c[104]=ibs_bc; c[105]=ibs_aliq; c[106]=ibs_val
@@ -1383,7 +1399,8 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
                   incluir_0100: bool = True, incluir_0110: bool = True,
                   incluir_1010: bool = True, incluir_1015: bool = False,
                   incluir_1097: bool = True, grupo_padrao: int = 0,
-                  tem_direito_credito: bool = True) -> tuple:
+                  tem_direito_credito: bool = True,
+                  conta_cfop_map: dict = None) -> tuple:
     root, erro = parse_xml_seguro(xml_content)
     if root is None:
         return "", {"erro": erro}, []
@@ -1440,6 +1457,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
                            if grupo_padrao > 0 else "Auto (CFOP/NCM)"),
         "Direito Credito": "Sim" if tem_direito_credito else "Nao",
     }
+    _conta_map = conta_cfop_map or {"3102": "55", "3101": "56", "outros": ""}
     if incluir_0000:
         lines.append(gerar_registro_0000(cnpj_empresa))
     if incluir_0020 and emit is not None:
@@ -1449,7 +1467,8 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str,
         for det in det_list:
             cod = get_text(det.find("nfe:prod", NS), "nfe:cProd")
             if cod not in produtos_gerados:
-                r0100 = gerar_registro_0100(det, grupo_padrao=grupo_padrao)
+                r0100 = gerar_registro_0100(det, grupo_padrao=grupo_padrao,
+                                             conta_cfop_map=_conta_map)
                 if r0100:
                     lines.append(r0100)
                 if incluir_0110:
@@ -1558,6 +1577,28 @@ with st.sidebar:
         index=0,
     )
     st.markdown("---")
+    # ── V5.9/V5.10: Conta Contábil Estoque (0100 campo 70)
+    st.markdown("### Conta Contábil Estoque (0100 campo 70)")
+    st.caption("SPED – Conta Contábil estoque – Em seu poder")
+    conta_3102 = st.text_input(
+        "CFOP 3102 – Mercadoria para Revenda",
+        value="55",
+        max_chars=20,
+        help="Conta contábil sugerida para CFOP 3102 (Compra p/ comercializacao - importacao direta)"
+    )
+    conta_3101 = st.text_input(
+        "CFOP 3101 – Matéria Prima",
+        value="56",
+        max_chars=20,
+        help="Conta contábil sugerida para CFOP 3101 (Compra p/ industrializacao - importacao direta)"
+    )
+    conta_outros = st.text_input(
+        "Demais CFOPs",
+        value="",
+        max_chars=20,
+        help="Conta contábil para CFOPs não mapeadas. Deixe em branco para não preencher."
+    )
+    st.markdown("---")
     with st.expander("Tabela de Grupos"):
         for cod, desc in sorted(TABELA_GRUPOS.items()):
             if cod > 0:
@@ -1569,12 +1610,11 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V5.7-FINAL — Emitente NF corrigido para importacao</h4>
+        <h4>V5.10-FINAL — Consolidacao de todas as correcoes</h4>
         <ul>
-          <li><b>1000 campo 17 (Emitente NF)</b>: Para notas de importacao, agora gera <b>"P" (Proprio)</b>
-          em vez de "T" (Terceiros). Para demais notas permanece "T".</li>
-          <li>O resumo exibido na tela tambem foi atualizado para refletir corretamente "P (Proprio)"
-          ou "T (Terceiros)".</li>
+          <li><b>V5.7</b>: 1000 campo 17 (Emitente NF) = "P" para importacao, "T" para demais.</li>
+          <li><b>V5.8</b>: 1030 campo 97 = Valor Desonerado; campo 98 = Motivo Desoneração (fixo "9" - Outros quando não informado no XML).</li>
+          <li><b>V5.9/V5.10</b>: 0100 campo 70 = SPED Conta Contábil estoque Em seu poder. Sugestão automática: CFOP 3102 → conta "55" (Mercadoria para Revenda), CFOP 3101 → conta "56" (Matéria Prima). Configurável pelo usuário na sidebar.</li>
         </ul>
         <h4>V5.6-FINAL — Correcoes de leiaute confirmadas pelos arquivos oficiais</h4>
         <ul>
@@ -1586,8 +1626,6 @@ with st.expander("Instrucoes / Historico de versoes", expanded=False):
         <h4>V5.5-FINAL — Sanitizacao de pipe (|) em campos de texto livre</h4>
         <h4>V5.4-FINAL — CNPJ vazio para fornecedor estrangeiro</h4>
         <h4>V5.3-FINAL — Chave NF-e cascata robusta + normalizar_nfe_root</h4>
-        <h4>V5.2-FINAL — emitente_nf="T" sempre para NF de entrada</h4>
-        <h4>V5.1-FINAL — CST PIS/COFINS tabelas + tem_direito_credito</h4>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1750,6 +1788,13 @@ if uploaded_files:
         )
         st.stop()
 
+    # Monta o mapa de contas contábeis a partir dos valores da sidebar
+    conta_cfop_map_atual = {
+        "3102": conta_3102.strip(),
+        "3101": conta_3101.strip(),
+        "outros": conta_outros.strip(),
+    }
+
     all_lines = []; all_resumos = []; all_dados_xls = []; erros = []
     progress = st.progress(0, text="Processando arquivos...")
 
@@ -1791,6 +1836,7 @@ if uploaded_files:
             incluir_1010=inc_1010, incluir_1015=inc_1015,
             incluir_1097=inc_1097, grupo_padrao=grupo_selecionado,
             tem_direito_credito=tem_direito_credito,
+            conta_cfop_map=conta_cfop_map_atual,
         )
 
         if "erro" in resumo:
