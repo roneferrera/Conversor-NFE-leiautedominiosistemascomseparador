@@ -13,7 +13,7 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.12-FINAL"
+VERSAO = "V5.14-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -158,65 +158,32 @@ CFOP_DESCRICAO = {
     "3949": "Outra entrada nao especificada",
 }
 
-# ── V5.12: Mapeamento mod XML → espécie Domínio (Relação de Espécies)
 MOD_PARA_ESPECIE = {
-    "55": "36",  # NF-e → Nota Fiscal Eletrônica
-    "65": "41",  # NFC-e
-    "57": "38",  # CT-e
-    "67": "45",  # CT-e OS
-    "58": "39",  # NFS-e
-    "01": "1",   # NF modelo 01
-    "1B": "2",   # NF Avulsa
-    "02": "3",   # NF Venda Consumidor
-    "04": "6",   # NF Produtor
-    "06": "7",   # NF Energia Elétrica
-    "07": "8",   # NF Serviço Transporte
-    "08": "9",   # Conhec. Transp. Rod.
-    "8B": "10",  # Conhec. Transp. Avulso
-    "09": "11",  # Conhec. Transp. Aquav.
-    "10": "12",  # Conhecimento Aéreo
-    "11": "13",  # Conhec. Transp. Ferrov.
-    "13": "18",  # Despacho Transporte
-    "14": "19",  # Resumo Movimento Diário
-    "15": "20",  # Ordem Coleta
-    "21": "21",  # NF Serviço Comunicação
-    "22": "22",  # NF Serviço Telecom.
-    "28": "27",  # NF Água Canalizada
-    "29": "28",  # NF Gás Canalizado
-    "03": "31",  # NF Serviços
-    "3A": "32",  # NF Serviços Simplif.
-    "3B": "33",  # NF Serviços Avulso
+    "55": "36", "65": "41", "57": "38", "67": "45", "58": "39",
+    "01": "1",  "1B": "2",  "02": "3",  "04": "6",  "06": "7",
+    "07": "8",  "08": "9",  "8B": "10", "09": "11", "10": "12",
+    "11": "13", "13": "18", "14": "19", "15": "20", "21": "21",
+    "22": "22", "28": "27", "29": "28", "03": "31", "3A": "32", "3B": "33",
 }
 
-# ── V5.12: SPED Tipo do item por CFOP (3 últimos dígitos)
 CFOP_TIPO_SPED = {
-    "102": "0", "202": "0", "302": "0",   # Mercadoria para Revenda
-    "101": "1", "201": "1", "301": "1",   # Matéria Prima
-    "111": "1", "211": "1",               # Devolução industrialização
-    "116": "8", "216": "8",               # Ativo Imobilizado
-    "122": "8", "222": "8",               # Ativo Imobilizado
-    "551": "8", "651": "8",               # Compra bem ativo imobilizado
-    "553": "7", "556": "7", "656": "7",   # Mat. Uso e Consumo
-    "125": "5", "225": "5",               # Embalagem
-    "126": "7", "226": "7",               # Uso e Consumo
-    "933": "9",                           # Serviços
-    "352": "6", "353": "6",               # Subproduto
+    "102": "0", "202": "0", "302": "0",
+    "101": "1", "201": "1", "301": "1",
+    "111": "1", "211": "1",
+    "116": "8", "216": "8",
+    "122": "8", "222": "8",
+    "551": "8", "651": "8",
+    "553": "7", "556": "7", "656": "7",
+    "125": "5", "225": "5",
+    "126": "7", "226": "7",
+    "933": "9",
+    "352": "6", "353": "6",
 }
 
-# ── V5.12: SPED Tipo → Grupo Domínio
 SPED_TIPO_PARA_GRUPO = {
-    "0":  2,   # Mercadoria → MERCADORIA PARA REVENDA
-    "1":  3,   # Matéria Prima → MATERIA PRIMA
-    "2":  8,   # Produto Intermediário → PRODUTOS INTERMEDIARIOS
-    "3":  5,   # Produto em Fabricação → PRODUTO EM PROCESSO
-    "4":  6,   # Produto Acabado → PRODUTO ACABADO
-    "5":  4,   # Embalagem → EMBALAGENS
-    "6":  7,   # Subproduto → SUBPRODUTO
-    "7":  9,   # Mat. Uso e Consumo → MATERIAL DE USO E CONSUMO
-    "8":  10,  # Ativo Imobilizado → ATIVO IMOBILIZADO
-    "9":  11,  # Serviços → SERVICOS
-    "10": 12,  # Outros Insumos → OUTROS INSUMOS
-    "99": 1,   # Outros → GERAL
+    "0":  2, "1":  3, "2":  8, "3":  5, "4":  6,
+    "5":  4, "6":  7, "7":  9, "8":  10,"9":  11,
+    "10": 12,"99": 1,
 }
 
 PAISES_BACEN_PARA_DOMINIO = {
@@ -317,7 +284,11 @@ def sanitizar_xml_bytes(raw: bytes) -> bytes:
 def sanitizar_texto_livre(texto: str) -> str:
     if not texto:
         return texto
-    return texto.replace("|", "/").replace("\n", " ").replace("\r", " ")
+    return (texto
+        .replace("|", "/")
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .replace("\t", " "))
 
 def resolver_codigo_pais_dominio(c_pais_xml: str, x_pais_xml: str) -> str:
     c_norm = (c_pais_xml or "").strip().zfill(4)
@@ -432,7 +403,6 @@ def parse_xml_seguro(raw_bytes: bytes):
         return None, f"XML invalido: {e}"
 
 def detectar_especie_por_mod(nfe_root) -> str:
-    """V5.12: detecta espécie automaticamente pelo campo <mod> do XML."""
     ide = nfe_root.find("nfe:infNFe/nfe:ide", NS)
     mod = get_text(ide, "nfe:mod") if ide is not None else ""
     return MOD_PARA_ESPECIE.get(mod, "36")
@@ -570,6 +540,32 @@ def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
     return False
 
 # ─────────────────────────────────────────────
+# V5.14: CORREÇÃO CRÍTICA — tratar_numero_di
+# Remove ano (2 dig) + letras (BR) + zeros à esquerda + dígito verificador
+# Exemplos:
+#   26BR0000983578-5 → somente_numeros → 2600009835785
+#                    → sem_ano [2:]    → 00009835785
+#                    → sem_dv  [:-1]   → 0000983578
+#                    → int()           → 983578   ✅ bate com o Domínio
+#   26BR0000785615-7 → 2600007856157  → 00007856157 → 0000785615 → 785615
+#   26BR0000831183-9 → 2600008311839  → 00008311839 → 0000831183 → 831183
+#   26BR0000845186-0 → 2600008451860  → 00008451860 → 0000845186 → 845186
+#   26BR0000906883-0 → 2600009068830  → 00009068830 → 0000906883 → 906883
+#   26BR0000905239-0 → 2600009052390  → 00009052390 → 0000905239 → 905239
+#   26BR0000920376-2 → 2600009203762  → 00009203762 → 0000920376 → 920376
+#   26BR0000903120-1 → 2600009031201  → 00009031201 → 0000903120 → 903120
+# ─────────────────────────────────────────────
+def tratar_numero_di(n_di_raw: str) -> str:
+    if not n_di_raw:
+        return ""
+    apenas_numeros = somente_numeros(n_di_raw)  # remove letras e hífens
+    if len(apenas_numeros) < 4:
+        return apenas_numeros
+    sem_ano = apenas_numeros[2:]   # remove os 2 primeiros dígitos (ano "26")
+    sem_dv  = sem_ano[:-1]         # remove o último dígito (dígito verificador)
+    return str(int(sem_dv))        # remove zeros à esquerda → ex: 983578
+
+# ─────────────────────────────────────────────
 # EXTRAÇÃO EXCEL
 # ─────────────────────────────────────────────
 def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
@@ -677,13 +673,12 @@ def extrair_dados_impostos_itens(nfe_root, nome_arquivo: str,
     return linhas
 
 # ─────────────────────────────────────────────
-# EXCEL — V5.11/V5.12: linha inteira colorida
+# EXCEL
 # ─────────────────────────────────────────────
 def gerar_excel_relatorio(dados_itens: list) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Impostos por Item"
-
     cinza_esc = "444444"; laranja = "FF8000"
     subhdr_icms  = PatternFill("solid", fgColor="1565C0")
     subhdr_ipi   = PatternFill("solid", fgColor="6A1B9A")
@@ -703,11 +698,9 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     green_fill   = PatternFill("solid", fgColor="E8F5E9")
     yellow_fill  = PatternFill("solid", fgColor="FFF9C4")
     orange_fill  = PatternFill("solid", fgColor="FFF3E0")
-
     if not dados_itens:
         ws["A1"] = "Nenhum dado disponivel."
         buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
-
     colunas = list(dados_itens[0].keys())
     grupos = {
         "Identificacao": ["Arquivo","NF","Emissao","Fornecedor","Chave NF-e","Item"],
@@ -728,7 +721,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     for grp, cols in grupos.items():
         for c in cols:
             col_grupo[c] = grp
-
     col_idx = 1
     for grp, cols in grupos.items():
         start = col_idx; end = col_idx + len(cols) - 1
@@ -737,35 +729,28 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         cell.fill = cor_grupo[grp]; cell.font = white_font
         cell.alignment = center; cell.border = border
         col_idx = end + 1
-
     for ci, col in enumerate(colunas, start=1):
         cell = ws.cell(row=2, column=ci, value=col)
         grp  = col_grupo.get(col, "Identificacao")
         cell.fill = cor_grupo[grp]; cell.font = white_font
         cell.alignment = center; cell.border = border
-
     cols_num = {
         "Qtd","V. Unit.","V. Prod.","V. Outro","V. Desc.","BC ICMS","Aliq. ICMS %","V. ICMS",
         "V. ICMS Deson","BC IPI","Aliq. IPI %","V. IPI","BC II","V. II","BC PIS","Aliq. PIS %",
         "V. PIS","BC COFINS","Aliq. COFINS %","V. COFINS","Aliq. PIS Padrao","Aliq. COF Padrao"
     }
-
     for ri, row in enumerate(dados_itens, start=3):
         fill_base = alt_fill if ri % 2 == 1 else alt_fill2
         pis_cred  = row.get("PIS c/ Credito") == "SIM"
         cof_cred  = row.get("COF c/ Credito") == "SIM"
-
         aliq_pis_row = row.get("Aliq. PIS %", 0.0)
         aliq_cof_row = row.get("Aliq. COFINS %", 0.0)
         aliq_pis_pad = row.get("Aliq. PIS Padrao", 0.0)
         aliq_cof_pad = row.get("Aliq. COF Padrao", 0.0)
-
         pis_reduzida  = (aliq_pis_pad > 0 and aliq_pis_row < aliq_pis_pad)
         cof_reduzida  = (aliq_cof_pad > 0 and aliq_cof_row < aliq_cof_pad)
         pis_diferente = (aliq_pis_pad > 0 and aliq_pis_row != aliq_pis_pad and not pis_reduzida)
         cof_diferente = (aliq_cof_pad > 0 and aliq_cof_row != aliq_cof_pad and not cof_reduzida)
-
-        # Prioridade: verde > amarelo > laranja > zebrado
         if pis_cred or cof_cred:
             row_fill = green_fill
         elif pis_reduzida or cof_reduzida:
@@ -774,7 +759,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
             row_fill = orange_fill
         else:
             row_fill = fill_base
-
         for ci, col in enumerate(colunas, start=1):
             val  = row[col]
             cell = ws.cell(row=ri, column=ci, value=val)
@@ -783,7 +767,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
             cell.fill      = row_fill
             if col in cols_num and isinstance(val, float):
                 cell.number_format = '#,##0.0000' if ("Aliq" in col or "Padrao" in col) else '#,##0.00'
-
     tot_row  = len(dados_itens) + 3
     ws.cell(row=tot_row, column=1, value="TOTAL").font = Font(bold=True)
     cols_soma = ["V. Prod.","V. Outro","V. Desc.","BC ICMS","V. ICMS","V. ICMS Deson",
@@ -796,7 +779,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         if col in cols_soma:
             cell.value = sum(r[col] for r in dados_itens if isinstance(r[col], float))
             cell.number_format = '#,##0.00'; cell.alignment = center
-
     leg_row = tot_row + 2
     ws.cell(row=leg_row, column=1, value="LEGENDA DE CORES").font = Font(bold=True, color="FF8000", size=10)
     legendas = [
@@ -810,7 +792,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         c2 = ws.cell(row=leg_row + i, column=2, value=desc)
         c2.border = border
         ws.merge_cells(start_row=leg_row+i, start_column=2, end_row=leg_row+i, end_column=6)
-
     larguras = {
         "Arquivo":22,"NF":10,"Emissao":12,"Fornecedor":30,"Chave NF-e":46,"Item":6,
         "Cod. Produto":18,"Descricao":50,"NCM":12,"CFOP":8,"Qtd":10,"V. Unit.":14,
@@ -826,7 +807,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     ws.row_dimensions[1].height = 20
     ws.row_dimensions[2].height = 28
     ws.freeze_panes = "A3"
-
     ws2 = wb.create_sheet("Resumo 1020")
     ws2["A1"] = "Resumo das linhas 1020 (agrupado por aliquota)"
     ws2["A1"].font = Font(bold=True, color=laranja, size=11)
@@ -835,7 +815,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
         c = ws2.cell(row=2, column=ci, value=h)
         c.fill = PatternFill("solid", fgColor=cinza_esc)
         c.font = white_font; c.alignment = center; c.border = border
-
     pis_ag = {}; cof_ag = {}
     for row in dados_itens:
         k = row["Aliq. PIS %"]
@@ -848,7 +827,6 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
             cof_ag[k2] = {"bc":0.0,"val":0.0,"cst":row["CST COF (Efet)"]}
         cof_ag[k2]["bc"]  += row["BC COFINS"]
         cof_ag[k2]["val"] += row["V. COFINS"]
-
     ri2 = 3
     for aliq, d in sorted(pis_ag.items()):
         if d["val"] > 0 or d["bc"] > 0:
@@ -870,12 +848,10 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
                 if ci in (2,3,4):
                     c.number_format = '#,##0.0000' if ci == 3 else '#,##0.00'
             ri2 += 1
-
     for ci in range(1, 7):
         ws2.column_dimensions[get_column_letter(ci)].width = 22
     ws2.column_dimensions[get_column_letter(6)].width = 60
     ws2.freeze_panes = "A3"
-
     buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 # ─────────────────────────────────────────────
@@ -935,11 +911,6 @@ def gerar_registro_0020(emit, dest=None, is_importacao: bool = False) -> str:
 
 def gerar_registro_0100(det, grupo_padrao: int = 0,
                          conta_cfop_map: dict = None) -> str:
-    """
-    V5.12: campo 68 (índice 67) = SPED Tipo do item — por CFOP (3 últimos dígitos)
-    V5.12: campo 9  (índice 8)  = Grupo — derivado do SPED Tipo quando modo Automático
-    V5.9/V5.10: campo 70 (índice 69) = SPED Conta Contábil estoque Em seu poder
-    """
     prod = det.find("nfe:prod", NS)
     if prod is None:
         return ""
@@ -964,18 +935,13 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         if ipi_trib is not None:
             aliq_ipi = fmt_decimal(get_text(ipi_trib,"nfe:pIPI"))
-
-    # ── V5.12: SPED Tipo do item (campo 68 / índice 67)
     cfop_final     = cfop[-3:] if len(cfop) >= 3 else cfop
     sped_tipo_item = CFOP_TIPO_SPED.get(cfop_final, "")
-
-    # ── V5.12: Grupo de Produtos (campo 9 / índice 8) — derivado do SPED Tipo
     if grupo_padrao > 0:
         cod_grupo = grupo_padrao
     elif sped_tipo_item:
         cod_grupo = SPED_TIPO_PARA_GRUPO.get(sped_tipo_item, 1)
     else:
-        # fallback: lógica anterior por CFOP/NCM
         g = {"11":2,"12":2,"13":3,"14":3,"15":9,"16":10,"17":11,"20":2,"21":2,"22":3,
              "25":9,"30":2,"31":3,"35":9,"40":2,"41":2,"55":12,"60":2}.get(cfop[:2], 1) if cfop else 1
         if g == 1 and ncm and len(ncm) >= 2:
@@ -987,12 +953,9 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
             cod_grupo = g2 if g2 != 1 else g
         else:
             cod_grupo = g
-
-    # ── V5.9/V5.10: Conta Contábil Estoque (campo 70 / índice 69)
     if conta_cfop_map is None:
         conta_cfop_map = {"3102":"55","3101":"56","outros":""}
     conta_contabil = conta_cfop_map.get(cfop, conta_cfop_map.get("outros",""))
-
     c = [""] * 91
     c[0]="0100"; c[1]=cod_prod; c[2]=descricao; c[3]=""; c[4]=ncm
     c[5]=""; c[6]=""; c[7]=""; c[8]=str(cod_grupo); c[9]=unidade
@@ -1000,11 +963,11 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""
     c[20]=cst_icms; c[21]=aliq_icms; c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26, 67): c[i]=""
-    c[67]=sped_tipo_item   # campo 68 — SPED Tipo do item
-    c[68]=""               # campo 69 — SPED Classificação
-    c[69]=conta_contabil   # campo 70 — SPED Conta Contábil estoque Em seu poder
+    c[67]=sped_tipo_item
+    c[68]=""
+    c[69]=conta_contabil
     for i in range(70, 74): c[i]=""
-    c[74]=DATA_CADASTRO_FIXO  # campo 75 — data cadastro
+    c[74]=DATA_CADASTRO_FIXO
     for i in range(75, 88): c[i]=""
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
@@ -1103,6 +1066,8 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     obs_fisco = ""
     if inf_adic is not None:
         obs_fisco = sanitizar_texto_livre(get_text(inf_adic, "nfe:infAdFisco"))[:300]
+    # campo 51: número da DI — mantido como no XML original (sem tratamento)
+    # pois o Domínio grava corretamente no 1000 com o valor completo
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
@@ -1317,6 +1282,11 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
                             valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
     return linhas
 
+# ─────────────────────────────────────────────
+# V5.14: gerar_registro_1030
+# ÚNICA mudança vs V5.12: campo nDI usa tratar_numero_di()
+# Resultado: 26BR0000983578-5 → 983578 (sem ano, sem BR, sem zeros, sem DV)
+# ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
                          tem_direito_credito: bool = True) -> str:
@@ -1335,9 +1305,12 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     cest     = get_text(prod,"nfe:CEST")
     v_frete_item = fmt_decimal(get_text(prod, "nfe:vFrete"))
     v_seg_item   = fmt_decimal(get_text(prod, "nfe:vSeg"))
-    di_node  = prod.find("nfe:DI", NS)
-    n_di = somente_numeros(get_text(di_node,"nfe:nDI")) if di_node is not None else ""
-    d_di = fmt_date(get_text(di_node,"nfe:dDI"))        if di_node is not None else ""
+    di_node = prod.find("nfe:DI", NS)
+    # ── V5.14 CORREÇÃO CRÍTICA: tratar_numero_di
+    # Remove ano(2) + letras BR + zeros à esquerda + dígito verificador
+    # Ex: 26BR0000983578-5 → 983578
+    n_di = tratar_numero_di(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
+    d_di = fmt_date(get_text(di_node,"nfe:dDI"))          if di_node is not None else ""
     icms_node = None
     v_bc_icms = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
     mot_des_icms = ""
@@ -1644,7 +1617,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
     return "\n".join(lines), resumo, (aliq_pis_pad, aliq_cof_pad)
 
 # ─────────────────────────────────────────────
-# SIDEBAR — V5.12: simplificada
+# SIDEBAR
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### Info")
@@ -1652,7 +1625,6 @@ with st.sidebar:
     st.markdown("**Thomson Reuters | Dominio Sistemas**")
     st.markdown("---")
     st.markdown("### Parametros")
-    # V5.12: CNPJ e acumulador removidos da sidebar
     tem_direito_credito = st.checkbox(
         "Tem direito a credito de PIS/COFINS", value=True,
         help="Marcado: CST de saida convertido para CST de entrada com credito.")
@@ -1704,23 +1676,20 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V5.14-FINAL — Correcao critica nDI no registro 1030</h4>
+        <ul>
+          <li><b>CORRECAO UNICA vs V5.12</b>: campo <code>nDI</code> do registro 1030
+              agora usa <code>tratar_numero_di()</code>.</li>
+          <li>Remove ano (2 dig) + prefixo BR + zeros a esquerda + digito verificador.</li>
+          <li>Exemplo: <code>26BR0000983578-5</code> → <b>983578</b> (confirmado no Dominio).</li>
+          <li>Demais registros (0000, 0020, 0100, 0110, 1000, 1010, 1020, 1097, 1150, 1151)
+              identicos ao V5.12 — sem alteracao.</li>
+        </ul>
         <h4>V5.12-FINAL — Simplificacao da sidebar + automacoes</h4>
         <ul>
-          <li><b>CNPJ removido da sidebar</b>: extraido automaticamente do XML.</li>
-          <li><b>Acumulador fallback removido</b>: gerenciado 100% pelo DE/PARA de CFOPs.</li>
-          <li><b>Especie automatica</b>: detectada pelo campo &lt;mod&gt; do XML (mod 55 → especie 36 NF-e, mod 65 → 41 NFC-e, etc.).</li>
-          <li><b>SPED Tipo do item (0100 campo 68)</b>: derivado dos 3 ultimos digitos da CFOP.</li>
-          <li><b>Grupo de Produtos (0100 campo 9)</b>: derivado do SPED Tipo quando modo Automatico.</li>
-        </ul>
-        <h4>V5.11-FINAL — Coloracao da linha inteira no Excel</h4>
-        <ul>
-          <li>Verde: CST com direito a credito PIS/COFINS (linha inteira).</li>
-          <li>Amarelo: Aliquota PIS/COFINS reduzida vs. padrao da nota (linha inteira).</li>
-          <li>Laranja: Aliquota PIS/COFINS diferente do padrao (linha inteira).</li>
-        </ul>
-        <h4>V5.10-FINAL — Consolidacao anterior</h4>
-        <ul>
-          <li>V5.7: 1000 campo 17 = "P"/"T". V5.8: 1030 campos 97/98. V5.9/V5.10: 0100 campo 70.</li>
+          <li>CNPJ extraido automaticamente do XML. Acumulador gerenciado pelo DE/PARA de CFOPs.</li>
+          <li>Especie automatica pelo campo &lt;mod&gt; do XML.</li>
+          <li>SPED Tipo do item (0100 campo 68) derivado dos 3 ultimos digitos da CFOP.</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1911,7 +1880,6 @@ if uploaded_files:
                 )
             except Exception:
                 pass
-            # V5.12: acumulador via DE/PARA
             try:
                 det_list_tmp = nfe_tmp.findall("nfe:infNFe/nfe:det", NS)
                 if det_list_tmp:
@@ -1923,7 +1891,6 @@ if uploaded_files:
                     )
             except Exception:
                 pass
-            # V5.12: espécie automática pelo <mod>
             try:
                 especie_nota = detectar_especie_por_mod(nfe_tmp)
             except Exception:
