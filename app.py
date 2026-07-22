@@ -36,7 +36,7 @@ def apply_tr_theme():
         .info-origem { background-color: #FFF3E0; border-left: 3px solid #FF8000; border-radius: 3px; padding: 8px 12px; font-size: 12px; color: #444444; margin: 6px 0; }
         .zip-info { background-color: #E3F2FD; border-left: 4px solid #1565C0; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: #1565C0; }
         .zip-warn { background-color: #FFF8E1; border-left: 4px solid #F9A825; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: #795548; }
-        .cofins-alert { background-color: #FFF3E0; border-left: 4px solid #FF8000; border-radius: 4px; padding: 12px 16px; margin: 10px 0; }
+        .cofins-alert { background-color: #FFF3E0; border: 2px solid #FF8000; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -551,9 +551,7 @@ def tratar_numero_di(n_di_raw: str) -> str:
     return str(int(sem_dv))
 
 # ─────────────────────────────────────────────
-# V5.16: DETECCAO DE COFINS 10,25% NOS ARQUIVOS
-# Retorna True se qualquer item tiver COFINS com aliquota 10,25%.
-# Chamada APOS o upload, resultado armazenado no session_state.
+# DETECCAO DE COFINS 10,25%
 # ─────────────────────────────────────────────
 def detectar_cofins_1025_nos_arquivos(arquivos: list) -> bool:
     for arq in arquivos:
@@ -987,8 +985,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     return pipe_join(c)
 
 # ─────────────────────────────────────────────
-# V5.16: extrair_pis_cofins
-# Override COFINS 10,25% → 9,65% com RECALCULO do valor (BC * nova_aliq / 100).
+# extrair_pis_cofins — override aliquota COFINS 10,25% → 9,65%
 # PIS nunca alterado.
 # ─────────────────────────────────────────────
 def extrair_pis_cofins(det, importacao: bool = False,
@@ -1017,7 +1014,6 @@ def extrair_pis_cofins(det, importacao: bool = False,
             if cn is not None:
                 cst_xml  = str(get_text(cn,"nfe:CST")).strip().zfill(2)
                 aliq_raw = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd")
-                # Override: substitui aliquota somente se 10,25%
                 if (aliq_cof_override is not None
                         and abs(safe_float(aliq_raw) - 10.25) < 0.001):
                     res["aliq_cof_e"] = fmt_decimal(str(aliq_cof_override), 4)
@@ -1153,7 +1149,14 @@ def gerar_registros_1015(nfe_root) -> list:
                 linhas.append(pipe_join(["1015", cod, bloco]))
     return linhas
 
-def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
+# ─────────────────────────────────────────────
+# V5.16: gerar_registros_1020
+# CORRECAO: recebe aliq_cof_override e recalcula aliquota + valor
+# dos itens com COFINS 10,25% no agrupamento do registro 5 (COFINS)
+# e no total do registro 134.
+# ─────────────────────────────────────────────
+def gerar_registros_1020(nfe_root, importacao: bool = False,
+                          aliq_cof_override: float = None) -> list:
     total    = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     v_nf     = fmt_decimal(get_text(total,"nfe:vNF"))
@@ -1254,6 +1257,10 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
             linhas.append(r1020(4, base=fmt_decimal(str(dados["bc"])),
                                 aliq=fmt_decimal(aliq_str,4),
                                 valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
+
+    # ── V5.16: COFINS agrupado COM override ──────────────────────────────────
+    # Se aliq_cof_override ativo, itens com 10,25% sao agrupados em 9,65%
+    # e o valor e recalculado como BC * 9,65 / 100.
     cof_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1263,14 +1270,23 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
             for ct in ["COFINSAliq","COFINSQtde","COFINSNT","COFINSOutr"]:
                 cn = cof_node.find(f"nfe:{ct}", NS)
                 if cn is not None:
-                    aliq_str = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd") or "0"
-                    bc    = safe_float(get_text(cn,"nfe:vBC"))
-                    valor = safe_float(get_text(cn,"nfe:vCOFINS"))
-                    if aliq_str not in cof_por_aliq:
-                        cof_por_aliq[aliq_str] = {"bc":0.0,"valor":0.0}
-                    cof_por_aliq[aliq_str]["bc"]    += bc
-                    cof_por_aliq[aliq_str]["valor"] += valor
+                    aliq_raw = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd") or "0"
+                    bc       = safe_float(get_text(cn,"nfe:vBC"))
+                    # Override: se 10,25% e override ativo → agrupa em 9,65% e recalcula valor
+                    if (aliq_cof_override is not None
+                            and abs(safe_float(aliq_raw) - 10.25) < 0.001):
+                        chave_aliq = str(aliq_cof_override)
+                        valor      = round(bc * aliq_cof_override / 100.0, 2)
+                    else:
+                        chave_aliq = aliq_raw
+                        valor      = safe_float(get_text(cn,"nfe:vCOFINS"))
+                    if chave_aliq not in cof_por_aliq:
+                        cof_por_aliq[chave_aliq] = {"bc":0.0,"valor":0.0}
+                    cof_por_aliq[chave_aliq]["bc"]    += bc
+                    cof_por_aliq[chave_aliq]["valor"] += valor
                     break
+    # ─────────────────────────────────────────────────────────────────────────
+
     for aliq_str, dados in sorted(cof_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
             linhas.append(r1020(5, base=fmt_decimal(str(dados["bc"])),
@@ -1302,14 +1318,25 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     if v_pis_tot and safe_float(v_pis_tot) > 0:
         linhas.append(r1020(133, base=fmt_decimal(str(bc_pis_total)),
                             valor=fmt_decimal(v_pis_tot), v_cont=v_nf))
+
+    # ── V5.16: registro 134 (total COFINS) recalculado se override ativo ─────
     if v_cofins_tot and safe_float(v_cofins_tot) > 0:
-        linhas.append(r1020(134, base=fmt_decimal(str(bc_cof_total)),
-                            valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
+        if aliq_cof_override is not None:
+            # Soma os valores ja recalculados no agrupamento acima
+            v_cof_134 = sum(d["valor"] for d in cof_por_aliq.values())
+            linhas.append(r1020(134, base=fmt_decimal(str(bc_cof_total)),
+                                valor=fmt_decimal(str(round(v_cof_134, 2))), v_cont=v_nf))
+        else:
+            linhas.append(r1020(134, base=fmt_decimal(str(bc_cof_total)),
+                                valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
+    # ─────────────────────────────────────────────────────────────────────────
+
     return linhas
 
 # ─────────────────────────────────────────────
 # V5.16: gerar_registro_1030
-# Override COFINS 10,25% → 9,65% com RECALCULO do v_cof = BC * nova_aliq / 100.
+# CORRECAO: recalcula v_cof = BC * nova_aliq / 100
+# quando aliq_cof_override ativo e aliquota original = 10,25%.
 # PIS nunca alterado.
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
@@ -1389,10 +1416,10 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                     # ── V5.16: Override com RECALCULO do valor ────────────────
                     if (aliq_cof_override is not None
                             and abs(safe_float(aliq_raw) - 10.25) < 0.001):
-                        aliq_cof  = fmt_decimal(str(aliq_cof_override), 4)
-                        # v_cof recalculado: BC * nova_aliquota / 100
-                        bc_f      = safe_float(bc_cof_raw)
-                        v_cof     = fmt_decimal(str(round(bc_f * aliq_cof_override / 100.0, 2)))
+                        aliq_cof = fmt_decimal(str(aliq_cof_override), 4)
+                        v_cof    = fmt_decimal(
+                            str(round(safe_float(bc_cof_raw) * aliq_cof_override / 100.0, 2))
+                        )
                     else:
                         aliq_cof = fmt_decimal(aliq_raw, 4)
                         v_cof    = fmt_decimal(get_text(cn,"nfe:vCOFINS"))
@@ -1569,7 +1596,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
                            if grupo_padrao > 0 else "Auto (CFOP→SPED Tipo→Grupo)"),
         "Direito Credito": "Sim" if tem_direito_credito else "Nao",
         "Especie":         especie,
-        "COFINS Override": "10,25% -> 9,65% (c/ recalculo)" if aliq_cof_override is not None else "Nao",
+        "COFINS Override": "10,25% -> 9,65% (aliq+valor)" if aliq_cof_override is not None else "Nao",
     }
     _conta_map = conta_cfop_map or {"3102":"55","3101":"56","outros":""}
     if incluir_0000:
@@ -1600,8 +1627,10 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
     if incluir_1015:
         for r in gerar_registros_1015(nfe):
             lines.append(r)
-    for r in gerar_registros_1020(nfe, importacao):
+    # ── V5.16: passa aliq_cof_override para 1020 ─────────────────────────────
+    for r in gerar_registros_1020(nfe, importacao, aliq_cof_override=aliq_cof_override):
         lines.append(r)
+    # ─────────────────────────────────────────────────────────────────────────
     for seq, det in enumerate(det_list, start=1):
         r1030 = gerar_registro_1030(
             det, seq, importacao=importacao,
@@ -1654,9 +1683,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
     return "\n".join(lines), resumo, (aliq_pis_pad, aliq_cof_pad)
 
 # ─────────────────────────────────────────────
-# SIDEBAR — parametros fixos (sem deteccao COFINS aqui)
-# A deteccao e o toggle de COFINS ficam na area principal,
-# logo apos o upload, para garantir visibilidade imediata.
+# SIDEBAR
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### Info")
@@ -1716,26 +1743,24 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V5.16-FINAL — Toggle COFINS na area principal + recalculo do valor</h4>
+        <h4>V5.16-FINAL — Override COFINS: aliquota + valor recalculado + toggle na area principal</h4>
         <ul>
-          <li><b>NOVO</b>: o toggle "Substituir COFINS 10,25% → 9,65%" foi movido para a
-              <b>area principal</b>, logo apos o upload, garantindo visibilidade imediata.</li>
-          <li>O toggle aparece <b>somente apos o upload</b> e somente se COFINS 10,25%
-              for detectada nos XMLs carregados.</li>
-          <li><b>RECALCULO</b>: quando o override esta ativo, o valor de COFINS (v_cof)
-              e recalculado como <code>BC * 9,65% / 100</code>, nao apenas a aliquota.</li>
+          <li><b>CORRECAO 1030</b>: v_cof agora e recalculado como BC * 9,65% / 100
+              quando override ativo. Antes apenas a aliquota era substituida.</li>
+          <li><b>CORRECAO 1020</b>: gerar_registros_1020 agora recebe aliq_cof_override.
+              Itens com 10,25% sao agrupados em 9,65% com valor recalculado.
+              Registro 134 (total COFINS) tambem e recalculado.</li>
+          <li><b>Toggle na area principal</b>: aparece imediatamente apos o upload,
+              sem depender de ciclo extra de renderizacao.</li>
           <li>PIS nunca alterado. Itens com COFINS != 10,25% nao sao afetados.</li>
-          <li>Override aplicado nos registros <b>0110</b> e <b>1030</b> (aliquota + valor).</li>
         </ul>
-        <h4>V5.15-FINAL — Override COFINS 10,25% → 9,65% na sidebar</h4>
+        <h4>V5.15-FINAL — Override COFINS 10,25% → 9,65% (somente aliquota)</h4>
         <ul>
           <li>Detecta automaticamente COFINS 10,25% e exibe toggle na sidebar.</li>
-          <li>Override aplicado somente na aliquota (sem recalculo do valor).</li>
         </ul>
         <h4>V5.14-FINAL — Correcao critica nDI no registro 1030</h4>
         <ul>
           <li>Campo nDI usa tratar_numero_di(): remove ano + prefixo + zeros + DV.</li>
-          <li>Exemplo: 26BR0000983578-5 → 983578.</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1753,7 +1778,7 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True,
 )
 
-# Valor padrao do override enquanto nao ha arquivos
+# Default: sem override ate que arquivos sejam carregados e toggle avaliado
 aliq_cof_override = None
 
 if uploaded_files:
@@ -1801,33 +1826,33 @@ if uploaded_files:
         st.stop()
 
     # ── V5.16: Deteccao e toggle COFINS na area principal ────────────────────
-    # Executado imediatamente apos o upload, antes do DE/PARA de CFOPs.
+    # Executado logo apos o parse dos arquivos, na mesma renderizacao.
     _tem_cofins_1025 = detectar_cofins_1025_nos_arquivos(arquivos_para_processar)
 
     if _tem_cofins_1025:
-        st.markdown("---")
         st.markdown(
             '<div class="cofins-alert">'
             '<b>⚠️ COFINS com aliquota 10,25% detectada nos XMLs carregados.</b><br>'
-            '<small>O PIS nao sera alterado. Apenas itens com COFINS = 10,25% serao afetados. '
-            'O valor de COFINS sera recalculado proporcionalmente (BC × 9,65% / 100).</small>'
+            '<small>Ative o toggle abaixo para substituir por 9,65% com recalculo do valor '
+            '(BC × 9,65% / 100). O PIS nao sera alterado. Apenas itens com COFINS = 10,25% '
+            'serao afetados.</small>'
             '</div>',
             unsafe_allow_html=True
         )
         override_cofins_ativo = st.toggle(
-            "🔄 Substituir COFINS 10,25% → 9,65% (com recalculo do valor)",
+            "🔄 Substituir COFINS 10,25% → 9,65% (aliquota + recalculo do valor)",
             value=False,
             key="toggle_cofins_override",
             help=(
-                "Ativo: substitui a aliquota de COFINS de 10,25% para 9,65% "
-                "e recalcula o valor (BC * 9,65% / 100) em todos os itens afetados. "
-                "PIS nao e alterado."
+                "Substitui a aliquota de 10,25% para 9,65% e recalcula o valor "
+                "de COFINS de cada item afetado como BC * 9,65% / 100. "
+                "PIS nao e alterado. Itens com outras aliquotas de COFINS nao sao afetados."
             ),
         )
         if override_cofins_ativo:
             st.success(
-                "✅ Override ativo: COFINS 10,25% → 9,65% com recalculo do valor. "
-                "Clique em processar para aplicar."
+                "✅ Override ativo: COFINS 10,25% → 9,65% com recalculo do valor aplicado "
+                "nos registros 0110, 1020 e 1030."
             )
             aliq_cof_override = 9.65
         else:
@@ -2021,7 +2046,7 @@ if uploaded_files:
                 cor       = "#1565C0" if is_imp else "#FF8000"
                 pais_info = f" | Pais Dom.: {r.get('Cod Pais (Dom)','')}" if is_imp else ""
                 cred_info = "✅ Com credito" if r.get("Direito Credito") == "Sim" else "❌ Sem credito"
-                cof_info  = "🔄 COFINS 10,25%→9,65% (recalculado)" if r.get("COFINS Override") != "Nao" else ""
+                cof_info  = "🔄 COFINS 10,25%→9,65% (aliq+valor)" if r.get("COFINS Override") != "Nao" else ""
                 with cols[idx]:
                     st.markdown(
                         f'<div class="cnpj-badge" style="color:{cor};border-color:{cor};">'
