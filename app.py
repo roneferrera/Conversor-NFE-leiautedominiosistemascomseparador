@@ -14,7 +14,7 @@ except ImportError:
     EXCEL_DISPONIVEL = False
 
 VERSAO = "V5.18-FINAL"
-DATA_CADASTRO_FIXO = "01/01/2020"
+DATA_CADASTRO_FIXO = "01/01/2026"
 
 # ─────────────────────────────────────────────
 # TEMA ADAPTATIVO (claro/escuro)
