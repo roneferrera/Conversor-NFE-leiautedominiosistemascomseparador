@@ -13,7 +13,7 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.14-FINAL"
+VERSAO = "V5.15-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -539,31 +539,43 @@ def detectar_ipi_zero_nao_isento(nfe_root) -> bool:
                 return True
     return False
 
-# ─────────────────────────────────────────────
-# V5.14: CORREÇÃO CRÍTICA — tratar_numero_di
-# Remove ano (2 dig) + letras (BR) + zeros à esquerda + dígito verificador
-# Exemplos:
-#   26BR0000983578-5 → somente_numeros → 2600009835785
-#                    → sem_ano [2:]    → 00009835785
-#                    → sem_dv  [:-1]   → 0000983578
-#                    → int()           → 983578   ✅ bate com o Domínio
-#   26BR0000785615-7 → 2600007856157  → 00007856157 → 0000785615 → 785615
-#   26BR0000831183-9 → 2600008311839  → 00008311839 → 0000831183 → 831183
-#   26BR0000845186-0 → 2600008451860  → 00008451860 → 0000845186 → 845186
-#   26BR0000906883-0 → 2600009068830  → 00009068830 → 0000906883 → 906883
-#   26BR0000905239-0 → 2600009052390  → 00009052390 → 0000905239 → 905239
-#   26BR0000920376-2 → 2600009203762  → 00009203762 → 0000920376 → 920376
-#   26BR0000903120-1 → 2600009031201  → 00009031201 → 0000903120 → 903120
-# ─────────────────────────────────────────────
 def tratar_numero_di(n_di_raw: str) -> str:
     if not n_di_raw:
         return ""
-    apenas_numeros = somente_numeros(n_di_raw)  # remove letras e hífens
+    apenas_numeros = somente_numeros(n_di_raw)
     if len(apenas_numeros) < 4:
         return apenas_numeros
-    sem_ano = apenas_numeros[2:]   # remove os 2 primeiros dígitos (ano "26")
-    sem_dv  = sem_ano[:-1]         # remove o último dígito (dígito verificador)
-    return str(int(sem_dv))        # remove zeros à esquerda → ex: 983578
+    sem_ano = apenas_numeros[2:]
+    sem_dv  = sem_ano[:-1]
+    return str(int(sem_dv))
+
+# ─────────────────────────────────────────────
+# DETECCAO DE COFINS 10,25% NOS ARQUIVOS
+# ─────────────────────────────────────────────
+def detectar_cofins_1025_nos_arquivos(arquivos: list) -> bool:
+    """Retorna True se qualquer item de qualquer XML tiver COFINS com aliquota 10,25%."""
+    for arq in arquivos:
+        root_s, _ = parse_xml_seguro(arq["bytes"])
+        if root_s is None:
+            continue
+        nfe_s = normalizar_nfe_root(root_s)
+        for det in nfe_s.findall("nfe:infNFe/nfe:det", NS):
+            imp = det.find("nfe:imposto", NS)
+            if imp is None:
+                continue
+            cof_node = imp.find("nfe:COFINS", NS)
+            if cof_node is not None:
+                for ct in ["COFINSAliq","COFINSQtde","COFINSNT","COFINSOutr"]:
+                    cn = cof_node.find(f"nfe:{ct}", NS)
+                    if cn is not None:
+                        v = safe_float(
+                            get_text(cn, "nfe:pCOFINS") or
+                            get_text(cn, "nfe:vAliqProd")
+                        )
+                        if abs(v - 10.25) < 0.001:
+                            return True
+                        break
+    return False
 
 # ─────────────────────────────────────────────
 # EXTRAÇÃO EXCEL
@@ -972,9 +984,15 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
 
+# ─────────────────────────────────────────────
+# V5.15: extrair_pis_cofins — override COFINS 10,25% → 9,65%
+# PIS nunca e alterado. Override so aplicado se aliq_cof_override != None
+# e o item tiver exatamente 10,25% de COFINS.
+# ─────────────────────────────────────────────
 def extrair_pis_cofins(det, importacao: bool = False,
                         aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
-                        tem_direito_credito: bool = True) -> dict:
+                        tem_direito_credito: bool = True,
+                        aliq_cof_override: float = None) -> dict:
     imposto = det.find("nfe:imposto", NS)
     res = {"cst_e":"","aliq_pis_e":"","aliq_cof_e":"","cst_s":"",
            "aliq_pis_s":"","aliq_cof_s":"","class_trib":"","cst_cof_e":""}
@@ -988,17 +1006,22 @@ def extrair_pis_cofins(det, importacao: bool = False,
                 cst_xml       = str(get_text(pn,"nfe:CST")).strip().zfill(2)
                 aliq          = get_text(pn,"nfe:pPIS") or get_text(pn,"nfe:vAliqProd")
                 res["cst_e"]      = obter_cst_entrada(cst_xml, tem_direito_credito)
-                res["aliq_pis_e"] = fmt_decimal(aliq, 4)
+                res["aliq_pis_e"] = fmt_decimal(aliq, 4)   # PIS: sem override, sempre original
                 break
     cof_node = imposto.find("nfe:COFINS", NS)
     if cof_node is not None:
         for ct in ["COFINSAliq","COFINSQtde","COFINSNT","COFINSOutr"]:
             cn = cof_node.find(f"nfe:{ct}", NS)
             if cn is not None:
-                cst_xml           = str(get_text(cn,"nfe:CST")).strip().zfill(2)
-                aliq              = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd")
-                res["aliq_cof_e"] = fmt_decimal(aliq, 4)
-                res["cst_cof_e"]  = obter_cst_entrada(cst_xml, tem_direito_credito)
+                cst_xml = str(get_text(cn,"nfe:CST")).strip().zfill(2)
+                aliq    = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd")
+                # Override: substitui 10,25% → 9,65% somente se ativo e aliquota bate
+                if (aliq_cof_override is not None
+                        and abs(safe_float(aliq) - 10.25) < 0.001):
+                    res["aliq_cof_e"] = fmt_decimal(str(aliq_cof_override), 4)
+                else:
+                    res["aliq_cof_e"] = fmt_decimal(aliq, 4)
+                res["cst_cof_e"] = obter_cst_entrada(cst_xml, tem_direito_credito)
                 break
     res["cst_s"]      = CST_ENTRADA_SAIDA.get(res["cst_e"], "")
     res["aliq_pis_s"] = res["aliq_pis_e"]
@@ -1010,10 +1033,12 @@ def extrair_pis_cofins(det, importacao: bool = False,
 
 def gerar_registro_0110(det, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
-                         tem_direito_credito: bool = True) -> str:
+                         tem_direito_credito: bool = True,
+                         aliq_cof_override: float = None) -> str:
     pc = extrair_pis_cofins(det, importacao=importacao,
                              aliq_pis_pad=aliq_pis_pad, aliq_cof_pad=aliq_cof_pad,
-                             tem_direito_credito=tem_direito_credito)
+                             tem_direito_credito=tem_direito_credito,
+                             aliq_cof_override=aliq_cof_override)
     ct = pc["class_trib"]
     vinculo_credito = "08" if importacao else ""
     c = [""] * 70
@@ -1066,8 +1091,6 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     obs_fisco = ""
     if inf_adic is not None:
         obs_fisco = sanitizar_texto_livre(get_text(inf_adic, "nfe:infAdFisco"))[:300]
-    # campo 51: número da DI — mantido como no XML original (sem tratamento)
-    # pois o Domínio grava corretamente no 1000 com o valor completo
     n_di = ""
     if det_list:
         di_node = det_list[0].find("nfe:prod/nfe:DI", NS)
@@ -1283,13 +1306,14 @@ def gerar_registros_1020(nfe_root, importacao: bool = False) -> list:
     return linhas
 
 # ─────────────────────────────────────────────
-# V5.14: gerar_registro_1030
-# ÚNICA mudança vs V5.12: campo nDI usa tratar_numero_di()
-# Resultado: 26BR0000983578-5 → 983578 (sem ano, sem BR, sem zeros, sem DV)
+# V5.15: gerar_registro_1030 — override COFINS 10,25% → 9,65%
+# PIS nunca alterado. Campo aliq_cof substituido somente se
+# aliq_cof_override != None e aliquota original for exatamente 10,25%.
 # ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
-                         tem_direito_credito: bool = True) -> str:
+                         tem_direito_credito: bool = True,
+                         aliq_cof_override: float = None) -> str:
     prod    = det.find("nfe:prod", NS)
     imposto = det.find("nfe:imposto", NS)
     if prod is None:
@@ -1306,9 +1330,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     v_frete_item = fmt_decimal(get_text(prod, "nfe:vFrete"))
     v_seg_item   = fmt_decimal(get_text(prod, "nfe:vSeg"))
     di_node = prod.find("nfe:DI", NS)
-    # ── V5.14 CORREÇÃO CRÍTICA: tratar_numero_di
-    # Remove ano(2) + letras BR + zeros à esquerda + dígito verificador
-    # Ex: 26BR0000983578-5 → 983578
     n_di = tratar_numero_di(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
     d_di = fmt_date(get_text(di_node,"nfe:dDI"))          if di_node is not None else ""
     icms_node = None
@@ -1351,7 +1372,7 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                     cst_pis_xml = str(get_text(pn,"nfe:CST")).strip().zfill(2)
                     aliq_raw    = get_text(pn,"nfe:pPIS") or get_text(pn,"nfe:vAliqProd")
                     v_pis       = fmt_decimal(get_text(pn,"nfe:vPIS"))
-                    aliq_pis    = fmt_decimal(aliq_raw, 4)
+                    aliq_pis    = fmt_decimal(aliq_raw, 4)   # PIS: sem override, sempre original
                     bc_pis      = fmt_decimal(get_text(pn,"nfe:vBC"))
                     break
         cof_node = imposto.find("nfe:COFINS", NS)
@@ -1362,8 +1383,13 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                     cst_cof_xml = str(get_text(cn,"nfe:CST")).strip().zfill(2)
                     aliq_raw    = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd")
                     v_cof       = fmt_decimal(get_text(cn,"nfe:vCOFINS"))
-                    aliq_cof    = fmt_decimal(aliq_raw, 4)
                     bc_cof      = fmt_decimal(get_text(cn,"nfe:vBC"))
+                    # Override: substitui 10,25% → 9,65% somente se ativo e aliquota bate
+                    if (aliq_cof_override is not None
+                            and abs(safe_float(aliq_raw) - 10.25) < 0.001):
+                        aliq_cof = fmt_decimal(str(aliq_cof_override), 4)
+                    else:
+                        aliq_cof = fmt_decimal(aliq_raw, 4)
                     break
         ibs_node = imposto.find("nfe:IBSCBS", NS)
         if ibs_node is not None:
@@ -1478,7 +1504,8 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
                   incluir_1010: bool = True, incluir_1015: bool = False,
                   incluir_1097: bool = True, grupo_padrao: int = 0,
                   tem_direito_credito: bool = True,
-                  conta_cfop_map: dict = None) -> tuple:
+                  conta_cfop_map: dict = None,
+                  aliq_cof_override: float = None) -> tuple:
     root, erro = parse_xml_seguro(xml_content)
     if root is None:
         return "", {"erro": erro}, []
@@ -1535,6 +1562,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
                            if grupo_padrao > 0 else "Auto (CFOP→SPED Tipo→Grupo)"),
         "Direito Credito": "Sim" if tem_direito_credito else "Nao",
         "Especie":         especie,
+        "COFINS Override": f"10,25% → 9,65%" if aliq_cof_override is not None else "Nao",
     }
     _conta_map = conta_cfop_map or {"3102":"55","3101":"56","outros":""}
     if incluir_0000:
@@ -1555,6 +1583,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
                         det, importacao=importacao,
                         aliq_pis_pad=aliq_pis_pad, aliq_cof_pad=aliq_cof_pad,
                         tem_direito_credito=tem_direito_credito,
+                        aliq_cof_override=aliq_cof_override,
                     ))
                 produtos_gerados.add(cod)
     lines.append(gerar_registro_1000(nfe, cnpj_empresa, acumulador, especie, importacao))
@@ -1571,6 +1600,7 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
             det, seq, importacao=importacao,
             aliq_pis_pad=aliq_pis_pad, aliq_cof_pad=aliq_cof_pad,
             tem_direito_credito=tem_direito_credito,
+            aliq_cof_override=aliq_cof_override,
         )
         if r1030:
             lines.append(r1030)
@@ -1628,6 +1658,36 @@ with st.sidebar:
     tem_direito_credito = st.checkbox(
         "Tem direito a credito de PIS/COFINS", value=True,
         help="Marcado: CST de saida convertido para CST de entrada com credito.")
+
+    # ── Override COFINS 10,25% → 9,65% ──────────────────────────────────────
+    # Detecta nos arquivos ja carregados se existe algum item com COFINS = 10,25%
+    _arquivos_sidebar = st.session_state.get("arquivos_para_processar_sidebar", [])
+    _tem_cofins_1025  = detectar_cofins_1025_nos_arquivos(_arquivos_sidebar)
+
+    if _tem_cofins_1025:
+        st.markdown("---")
+        st.markdown("### ⚠️ COFINS 10,25% detectada")
+        override_cofins_ativo = st.toggle(
+            "Substituir COFINS 10,25% → 9,65%",
+            value=False,
+            help=(
+                "Detectado COFINS com aliquota 10,25% nos XMLs carregados. "
+                "Ative para substituir por 9,65% em todos os itens com essa aliquota. "
+                "O PIS nao sera alterado."
+            ),
+        )
+        if override_cofins_ativo:
+            st.caption("✅ COFINS 10,25% sera substituida por **9,65%** no processamento.")
+        else:
+            st.caption("ℹ️ Toggle desligado: aliquota original do XML sera mantida.")
+    else:
+        override_cofins_ativo = False
+
+    # Valor efetivo repassado ao conversor (None = sem override)
+    aliq_cof_override = 9.65 if override_cofins_ativo else None
+    # ─────────────────────────────────────────────────────────────────────────
+
+    st.markdown("---")
     st.caption("ℹ️ **Especie** detectada automaticamente pelo `<mod>` do XML.")
     st.caption("ℹ️ **CNPJ** extraido automaticamente do XML (`<emit><CNPJ>`).")
     st.caption("ℹ️ **Acumulador** gerenciado pelo DE/PARA de CFOPs abaixo.")
@@ -1676,14 +1736,24 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
+        <h4>V5.15-FINAL — Override COFINS 10,25% → 9,65% na sidebar</h4>
+        <ul>
+          <li><b>NOVO</b>: detecta automaticamente se algum XML carregado possui COFINS
+              com aliquota 10,25%.</li>
+          <li>Se detectado, exibe toggle <b>"Substituir COFINS 10,25% → 9,65%"</b>
+              na sidebar (secao destacada).</li>
+          <li>Toggle so aparece quando a aliquota 10,25% esta presente nos XMLs carregados.</li>
+          <li>PIS nunca e alterado. Itens com COFINS diferente de 10,25% tambem nao sao
+              alterados mesmo com o toggle ativo.</li>
+          <li>Override aplicado nos registros <b>0110</b> (campo aliq_cof_e) e
+              <b>1030</b> (campo 37 - aliquota COFINS).</li>
+        </ul>
         <h4>V5.14-FINAL — Correcao critica nDI no registro 1030</h4>
         <ul>
           <li><b>CORRECAO UNICA vs V5.12</b>: campo <code>nDI</code> do registro 1030
               agora usa <code>tratar_numero_di()</code>.</li>
           <li>Remove ano (2 dig) + prefixo BR + zeros a esquerda + digito verificador.</li>
           <li>Exemplo: <code>26BR0000983578-5</code> → <b>983578</b> (confirmado no Dominio).</li>
-          <li>Demais registros (0000, 0020, 0100, 0110, 1000, 1010, 1020, 1097, 1150, 1151)
-              identicos ao V5.12 — sem alteracao.</li>
         </ul>
         <h4>V5.12-FINAL — Simplificacao da sidebar + automacoes</h4>
         <ul>
@@ -1730,6 +1800,9 @@ if uploaded_files:
                     "zip": f.name, "total": 0, "importacao": 0,
                     "ignorados": [], "erros": [f"{f.name} (arquivo vazio)"]
                 })
+
+    # Persiste lista para a sidebar detectar aliquotas na proxima renderizacao
+    st.session_state["arquivos_para_processar_sidebar"] = arquivos_para_processar
 
     if relatorio_zip:
         st.markdown("#### Relatorio de triagem dos ZIPs")
@@ -1905,6 +1978,7 @@ if uploaded_files:
             incluir_1097=inc_1097, grupo_padrao=grupo_selecionado,
             tem_direito_credito=tem_direito_credito,
             conta_cfop_map=conta_cfop_map_atual,
+            aliq_cof_override=aliq_cof_override,
         )
 
         if "erro" in resumo:
@@ -1936,6 +2010,7 @@ if uploaded_files:
                 cor       = "#1565C0" if is_imp else "#FF8000"
                 pais_info = f" | Pais Dom.: {r.get('Cod Pais (Dom)','')}" if is_imp else ""
                 cred_info = "✅ Com credito" if r.get("Direito Credito") == "Sim" else "❌ Sem credito"
+                cof_info  = "🔄 COFINS 10,25%→9,65%" if r.get("COFINS Override") != "Nao" else ""
                 with cols[idx]:
                     st.markdown(
                         f'<div class="cnpj-badge" style="color:{cor};border-color:{cor};">'
@@ -1948,6 +2023,7 @@ if uploaded_files:
                         f'<br><small>Acumulador: <b>{r.get("Acumulador","")}</b> | {cred_info}</small>'
                         f'<br><small>Emitente NF: <b>{r.get("Emitente NF","")}</b> | '
                         f'Especie: <b>{r.get("Especie","36")}</b></small>'
+                        f'{("<br><small style=color:#E65100;><b>"+cof_info+"</b></small>") if cof_info else ""}'
                         f'<br><small>Chave: {r.get("Chave NF-e","")[:22]}...</small>'
                         f'</div>', unsafe_allow_html=True)
 
