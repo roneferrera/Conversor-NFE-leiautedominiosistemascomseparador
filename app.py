@@ -13,7 +13,7 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.16-FINAL"
+VERSAO = "V5.17-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
 def apply_tr_theme():
@@ -313,6 +313,7 @@ def get_text(element, path: str, default: str = "") -> str:
     return default
 
 def fmt_decimal(value: str, decimals: int = 2) -> str:
+    """Formata decimal. Retorna '' quando vazio (uso geral — codigos, textos)."""
     if not value:
         return ""
     try:
@@ -320,6 +321,16 @@ def fmt_decimal(value: str, decimals: int = 2) -> str:
         return f"{v:.{decimals}f}".replace(".", ",")
     except (ValueError, TypeError):
         return str(value)
+
+def fmt_valor(value: str, decimals: int = 2) -> str:
+    """Formata decimal monetario. Retorna '0,00' quando vazio ou zero."""
+    if value is None or str(value).strip() == "":
+        return f"{0:.{decimals}f}".replace(".", ",")
+    try:
+        v = float(str(value).replace(",", "."))
+        return f"{v:.{decimals}f}".replace(".", ",")
+    except (ValueError, TypeError):
+        return f"{0:.{decimals}f}".replace(".", ",")
 
 def fmt_date(iso_date: str) -> str:
     if not iso_date:
@@ -984,10 +995,6 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     c[88]=cest; c[89]=""; c[90]=""
     return pipe_join(c)
 
-# ─────────────────────────────────────────────
-# extrair_pis_cofins — override aliquota COFINS 10,25% → 9,65%
-# PIS nunca alterado.
-# ─────────────────────────────────────────────
 def extrair_pis_cofins(det, importacao: bool = False,
                         aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
                         tem_direito_credito: bool = True,
@@ -1071,16 +1078,17 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     c_mun_fg = get_text(ide, "nfe:cMunFG")
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP") if det_list else ""
-    v_nf     = fmt_decimal(get_text(total, "nfe:vNF"))
-    v_pis    = fmt_decimal(get_text(total, "nfe:vPIS"))
-    v_cofins = fmt_decimal(get_text(total, "nfe:vCOFINS"))
-    v_ipi    = fmt_decimal(get_text(total, "nfe:vIPI"))
-    v_st     = fmt_decimal(get_text(total, "nfe:vST"))
-    v_prod   = fmt_decimal(get_text(total, "nfe:vProd"))
-    v_frete  = fmt_decimal(get_text(total, "nfe:vFrete"))
-    v_seg    = fmt_decimal(get_text(total, "nfe:vSeg"))
-    v_outro  = fmt_decimal(get_text(total, "nfe:vOutro"))
-    v_icms_d = fmt_decimal(get_text(total, "nfe:vICMSDeson"))
+    # Campos de valor no 1000: sempre fmt_valor (0,00 quando ausente/zero)
+    v_nf     = fmt_valor(get_text(total, "nfe:vNF"))
+    v_pis    = fmt_valor(get_text(total, "nfe:vPIS"))
+    v_cofins = fmt_valor(get_text(total, "nfe:vCOFINS"))
+    v_ipi    = fmt_valor(get_text(total, "nfe:vIPI"))
+    v_st     = fmt_valor(get_text(total, "nfe:vST"))
+    v_prod   = fmt_valor(get_text(total, "nfe:vProd"))
+    v_frete  = fmt_valor(get_text(total, "nfe:vFrete"))
+    v_seg    = fmt_valor(get_text(total, "nfe:vSeg"))
+    v_outro  = fmt_valor(get_text(total, "nfe:vOutro"))
+    v_icms_d = fmt_valor(get_text(total, "nfe:vICMSDeson"))
     chave = extrair_chave_nfe(nfe_root)
     transp        = nfe_root.find("nfe:infNFe/nfe:transp", NS)
     mod_frete_cod = get_text(transp, "nfe:modFrete")
@@ -1149,17 +1157,11 @@ def gerar_registros_1015(nfe_root) -> list:
                 linhas.append(pipe_join(["1015", cod, bloco]))
     return linhas
 
-# ─────────────────────────────────────────────
-# V5.16: gerar_registros_1020
-# CORRECAO: recebe aliq_cof_override e recalcula aliquota + valor
-# dos itens com COFINS 10,25% no agrupamento do registro 5 (COFINS)
-# e no total do registro 134.
-# ─────────────────────────────────────────────
 def gerar_registros_1020(nfe_root, importacao: bool = False,
                           aliq_cof_override: float = None) -> list:
     total    = nfe_root.find("nfe:infNFe/nfe:total/nfe:ICMSTot", NS)
     det_list = nfe_root.findall("nfe:infNFe/nfe:det", NS)
-    v_nf     = fmt_decimal(get_text(total,"nfe:vNF"))
+    v_nf     = fmt_valor(get_text(total,"nfe:vNF"))
     linhas   = []
     def r1020(cod, perc_red="", base="", aliq="", valor="", isentas="", outras="",
               v_ipi_r="", v_st_r="", v_cont="", cod_rec="", nao_trib="", parc_red="",
@@ -1186,11 +1188,11 @@ def gerar_registros_1020(nfe_root, importacao: bool = False,
                 icms_por_aliq[aliq_str]["valor"] += valor
                 icms_por_aliq[aliq_str]["deson"] += deson
                 break
-    v_ipi_tot  = fmt_decimal(get_text(total,"nfe:vIPI"))
-    v_st_tot   = fmt_decimal(get_text(total,"nfe:vST"))
-    v_prod_tot = fmt_decimal(get_text(total,"nfe:vProd"))
+    v_ipi_tot  = fmt_valor(get_text(total,"nfe:vIPI"))
+    v_st_tot   = fmt_valor(get_text(total,"nfe:vST"))
+    v_prod_tot = fmt_valor(get_text(total,"nfe:vProd"))
     if importacao:
-        if safe_float(v_ipi_tot) > 0:
+        if safe_float(v_ipi_tot.replace(",",".")) > 0:
             outras_icms = v_ipi_tot
         elif detectar_ipi_zero_nao_isento(nfe_root):
             outras_icms = v_prod_tot
@@ -1200,12 +1202,13 @@ def gerar_registros_1020(nfe_root, importacao: bool = False,
         outras_icms = ""
     for aliq_str, dados in sorted(icms_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
-            linhas.append(r1020(1, base=fmt_decimal(str(dados["bc"])),
-                                aliq=fmt_decimal(aliq_str),
-                                valor=fmt_decimal(str(dados["valor"])),
-                                outras=outras_icms,
-                                v_ipi_r="" if outras_icms else v_ipi_tot,
-                                v_st_r=v_st_tot, v_cont=v_nf))
+            linhas.append(r1020(1,
+                base=fmt_valor(str(dados["bc"])),
+                aliq=fmt_decimal(aliq_str),
+                valor=fmt_valor(str(dados["valor"])),
+                outras=outras_icms,
+                v_ipi_r="" if outras_icms else v_ipi_tot,
+                v_st_r=v_st_tot, v_cont=v_nf))
     ipi_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1229,12 +1232,14 @@ def gerar_registros_1020(nfe_root, importacao: bool = False,
     for aliq_str, dados in sorted(ipi_por_aliq.items(), key=lambda x: safe_float(x[0])):
         aliq_f = safe_float(aliq_str)
         if aliq_f == 0 and dados["isentas"] > 0:
-            linhas.append(r1020(2, base=fmt_decimal(str(dados["bc"])),
-                                isentas=fmt_decimal(str(dados["isentas"])), v_cont=v_nf))
+            linhas.append(r1020(2,
+                base=fmt_valor(str(dados["bc"])),
+                isentas=fmt_valor(str(dados["isentas"])), v_cont=v_nf))
         elif dados["valor"] > 0 or (dados["bc"] > 0 and aliq_f > 0):
-            linhas.append(r1020(2, base=fmt_decimal(str(dados["bc"])),
-                                aliq=fmt_decimal(aliq_str),
-                                valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
+            linhas.append(r1020(2,
+                base=fmt_valor(str(dados["bc"])),
+                aliq=fmt_decimal(aliq_str),
+                valor=fmt_valor(str(dados["valor"])), v_cont=v_nf))
     pis_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1254,13 +1259,10 @@ def gerar_registros_1020(nfe_root, importacao: bool = False,
                     break
     for aliq_str, dados in sorted(pis_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
-            linhas.append(r1020(4, base=fmt_decimal(str(dados["bc"])),
-                                aliq=fmt_decimal(aliq_str,4),
-                                valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
-
-    # ── V5.16: COFINS agrupado COM override ──────────────────────────────────
-    # Se aliq_cof_override ativo, itens com 10,25% sao agrupados em 9,65%
-    # e o valor e recalculado como BC * 9,65 / 100.
+            linhas.append(r1020(4,
+                base=fmt_valor(str(dados["bc"])),
+                aliq=fmt_decimal(aliq_str,4),
+                valor=fmt_valor(str(dados["valor"])), v_cont=v_nf))
     cof_por_aliq = {}
     for det in det_list:
         imp = det.find("nfe:imposto", NS)
@@ -1272,7 +1274,6 @@ def gerar_registros_1020(nfe_root, importacao: bool = False,
                 if cn is not None:
                     aliq_raw = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd") or "0"
                     bc       = safe_float(get_text(cn,"nfe:vBC"))
-                    # Override: se 10,25% e override ativo → agrupa em 9,65% e recalcula valor
                     if (aliq_cof_override is not None
                             and abs(safe_float(aliq_raw) - 10.25) < 0.001):
                         chave_aliq = str(aliq_cof_override)
@@ -1285,18 +1286,18 @@ def gerar_registros_1020(nfe_root, importacao: bool = False,
                     cof_por_aliq[chave_aliq]["bc"]    += bc
                     cof_por_aliq[chave_aliq]["valor"] += valor
                     break
-    # ─────────────────────────────────────────────────────────────────────────
-
     for aliq_str, dados in sorted(cof_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["valor"] > 0 or dados["bc"] > 0:
-            linhas.append(r1020(5, base=fmt_decimal(str(dados["bc"])),
-                                aliq=fmt_decimal(aliq_str,4),
-                                valor=fmt_decimal(str(dados["valor"])), v_cont=v_nf))
+            linhas.append(r1020(5,
+                base=fmt_valor(str(dados["bc"])),
+                aliq=fmt_decimal(aliq_str,4),
+                valor=fmt_valor(str(dados["valor"])), v_cont=v_nf))
     for aliq_str, dados in sorted(icms_por_aliq.items(), key=lambda x: safe_float(x[0])):
         if dados["deson"] > 0:
-            linhas.append(r1020(45, base=fmt_decimal(str(dados["bc"])),
-                                aliq=fmt_decimal(aliq_str),
-                                valor=fmt_decimal(str(dados["deson"])), v_cont=v_nf))
+            linhas.append(r1020(45,
+                base=fmt_valor(str(dados["bc"])),
+                aliq=fmt_decimal(aliq_str),
+                valor=fmt_valor(str(dados["deson"])), v_cont=v_nf))
     v_pis_tot    = get_text(total,"nfe:vPIS")
     v_cofins_tot = get_text(total,"nfe:vCOFINS")
     bc_pis_total = bc_cof_total = 0.0
@@ -1316,29 +1317,21 @@ def gerar_registros_1020(nfe_root, importacao: bool = False,
                 except ValueError: pass
                 break
     if v_pis_tot and safe_float(v_pis_tot) > 0:
-        linhas.append(r1020(133, base=fmt_decimal(str(bc_pis_total)),
-                            valor=fmt_decimal(v_pis_tot), v_cont=v_nf))
-
-    # ── V5.16: registro 134 (total COFINS) recalculado se override ativo ─────
+        linhas.append(r1020(133,
+            base=fmt_valor(str(bc_pis_total)),
+            valor=fmt_valor(v_pis_tot), v_cont=v_nf))
     if v_cofins_tot and safe_float(v_cofins_tot) > 0:
         if aliq_cof_override is not None:
-            # Soma os valores ja recalculados no agrupamento acima
             v_cof_134 = sum(d["valor"] for d in cof_por_aliq.values())
-            linhas.append(r1020(134, base=fmt_decimal(str(bc_cof_total)),
-                                valor=fmt_decimal(str(round(v_cof_134, 2))), v_cont=v_nf))
+            linhas.append(r1020(134,
+                base=fmt_valor(str(bc_cof_total)),
+                valor=fmt_valor(str(round(v_cof_134, 2))), v_cont=v_nf))
         else:
-            linhas.append(r1020(134, base=fmt_decimal(str(bc_cof_total)),
-                                valor=fmt_decimal(v_cofins_tot), v_cont=v_nf))
-    # ─────────────────────────────────────────────────────────────────────────
-
+            linhas.append(r1020(134,
+                base=fmt_valor(str(bc_cof_total)),
+                valor=fmt_valor(v_cofins_tot), v_cont=v_nf))
     return linhas
 
-# ─────────────────────────────────────────────
-# V5.16: gerar_registro_1030
-# CORRECAO: recalcula v_cof = BC * nova_aliq / 100
-# quando aliq_cof_override ativo e aliquota original = 10,25%.
-# PIS nunca alterado.
-# ─────────────────────────────────────────────
 def gerar_registro_1030(det, seq: int, importacao: bool = False,
                          aliq_pis_pad: float = 0.0, aliq_cof_pad: float = 0.0,
                          tem_direito_credito: bool = True,
@@ -1356,11 +1349,15 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     unidade  = get_text(prod,"nfe:uCom")
     v_unit   = get_text(prod,"nfe:vUnCom")
     cest     = get_text(prod,"nfe:CEST")
-    v_frete_item = fmt_decimal(get_text(prod, "nfe:vFrete"))
-    v_seg_item   = fmt_decimal(get_text(prod, "nfe:vSeg"))
+
+    # ── Campos de valor acessorios: sempre fmt_valor (0,00 quando ausente/zero)
+    v_frete_item = fmt_valor(get_text(prod, "nfe:vFrete"))
+    v_seg_item   = fmt_valor(get_text(prod, "nfe:vSeg"))
+
     di_node = prod.find("nfe:DI", NS)
     n_di = tratar_numero_di(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
     d_di = fmt_date(get_text(di_node,"nfe:dDI"))          if di_node is not None else ""
+
     icms_node = None
     v_bc_icms = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
     mot_des_icms = ""
@@ -1369,6 +1366,7 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     v_cof = aliq_cof = cst_cof_xml = bc_cof = ""
     ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
     cbs_class_trib = cbs_bc = cbs_aliq = cbs_val = ""
+
     if imposto is not None:
         for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40","ICMS51","ICMS60",
                    "ICMS70","ICMS90","ICMSSN101","ICMSSN102","ICMSSN201",
@@ -1377,22 +1375,25 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
             if node is not None:
                 icms_node = node; break
         if icms_node is not None:
-            v_bc_icms    = fmt_decimal(get_text(icms_node,"nfe:vBC"))
+            v_bc_icms    = fmt_valor(get_text(icms_node,"nfe:vBC"))
             aliq_icms    = fmt_decimal(get_text(icms_node,"nfe:pICMS"))
-            v_icms       = fmt_decimal(get_text(icms_node,"nfe:vICMS"))
+            v_icms       = fmt_valor(get_text(icms_node,"nfe:vICMS"))
             cst_icms     = get_text(icms_node,"nfe:CST") or get_text(icms_node,"nfe:CSOSN")
-            v_icms_des   = fmt_decimal(get_text(icms_node,"nfe:vICMSDeson"))
-            v_bc_st      = fmt_decimal(get_text(icms_node,"nfe:vBCST"))
+            v_icms_des   = fmt_valor(get_text(icms_node,"nfe:vICMSDeson"))
+            v_bc_st      = fmt_valor(get_text(icms_node,"nfe:vBCST"))
             mot_des_icms = get_text(icms_node,"nfe:motDesICMS") or ""
+
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         ipi_nt   = imposto.find("nfe:IPI/nfe:IPINT", NS)
         if ipi_trib is not None:
-            v_ipi    = fmt_decimal(get_text(ipi_trib,"nfe:vIPI"))
+            v_ipi    = fmt_valor(get_text(ipi_trib,"nfe:vIPI"))
             aliq_ipi = fmt_decimal(get_text(ipi_trib,"nfe:pIPI"))
             cst_ipi  = get_text(ipi_trib,"nfe:CST")
         elif ipi_nt is not None:
-            v_ipi = "0,00"; aliq_ipi = "0,00"
-            cst_ipi = get_text(ipi_nt,"nfe:CST")
+            v_ipi    = "0,00"
+            aliq_ipi = "0,00"
+            cst_ipi  = get_text(ipi_nt,"nfe:CST")
+
         pis_node = imposto.find("nfe:PIS", NS)
         if pis_node is not None:
             for pt in ["PISAliq","PISQtde","PISNT","PISOutr"]:
@@ -1400,10 +1401,11 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                 if pn is not None:
                     cst_pis_xml = str(get_text(pn,"nfe:CST")).strip().zfill(2)
                     aliq_raw    = get_text(pn,"nfe:pPIS") or get_text(pn,"nfe:vAliqProd")
-                    v_pis       = fmt_decimal(get_text(pn,"nfe:vPIS"))
-                    aliq_pis    = fmt_decimal(aliq_raw, 4)   # PIS: sem override
-                    bc_pis      = fmt_decimal(get_text(pn,"nfe:vBC"))
+                    v_pis       = fmt_valor(get_text(pn,"nfe:vPIS"))
+                    aliq_pis    = fmt_decimal(aliq_raw, 4)
+                    bc_pis      = fmt_valor(get_text(pn,"nfe:vBC"))
                     break
+
         cof_node = imposto.find("nfe:COFINS", NS)
         if cof_node is not None:
             for ct in ["COFINSAliq","COFINSQtde","COFINSNT","COFINSOutr"]:
@@ -1412,64 +1414,68 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                     cst_cof_xml = str(get_text(cn,"nfe:CST")).strip().zfill(2)
                     aliq_raw    = get_text(cn,"nfe:pCOFINS") or get_text(cn,"nfe:vAliqProd")
                     bc_cof_raw  = get_text(cn,"nfe:vBC")
-                    bc_cof      = fmt_decimal(bc_cof_raw)
-                    # ── V5.16: Override com RECALCULO do valor ────────────────
+                    bc_cof      = fmt_valor(bc_cof_raw)
                     if (aliq_cof_override is not None
                             and abs(safe_float(aliq_raw) - 10.25) < 0.001):
                         aliq_cof = fmt_decimal(str(aliq_cof_override), 4)
-                        v_cof    = fmt_decimal(
+                        v_cof    = fmt_valor(
                             str(round(safe_float(bc_cof_raw) * aliq_cof_override / 100.0, 2))
                         )
                     else:
                         aliq_cof = fmt_decimal(aliq_raw, 4)
-                        v_cof    = fmt_decimal(get_text(cn,"nfe:vCOFINS"))
-                    # ─────────────────────────────────────────────────────────
+                        v_cof    = fmt_valor(get_text(cn,"nfe:vCOFINS"))
                     break
+
         ibs_node = imposto.find("nfe:IBSCBS", NS)
         if ibs_node is not None:
             ibs_class_trib = get_text(ibs_node,"nfe:cClassTrib")
             cbs_class_trib = ibs_class_trib
             gibs = ibs_node.find("nfe:gIBSCBS", NS)
             if gibs is not None:
-                ibs_bc = fmt_decimal(get_text(gibs,"nfe:vBC"))
+                ibs_bc = fmt_valor(get_text(gibs,"nfe:vBC"))
                 cbs_bc = ibs_bc
                 guf = gibs.find("nfe:gIBSUF", NS)
                 if guf is not None:
                     ibs_aliq = fmt_decimal(get_text(guf,"nfe:pIBSUF"))
-                    ibs_val  = fmt_decimal(get_text(guf,"nfe:vIBSUF"))
+                    ibs_val  = fmt_valor(get_text(guf,"nfe:vIBSUF"))
                 gcbs = gibs.find("nfe:gCBS", NS)
                 if gcbs is not None:
                     cbs_aliq = fmt_decimal(get_text(gcbs,"nfe:pCBS"))
-                    cbs_val  = fmt_decimal(get_text(gcbs,"nfe:vCBS"))
+                    cbs_val  = fmt_valor(get_text(gcbs,"nfe:vCBS"))
+
     cst_pis_ef = obter_cst_entrada(cst_pis_xml, tem_direito_credito)
     cst_cof_ef = obter_cst_entrada(cst_cof_xml, tem_direito_credito)
+
     try:
         vp = float(v_prod or "0")
         vi = float(get_text(imposto.find("nfe:IPI/nfe:IPITrib",NS) if imposto else None,
                             "nfe:vIPI") or "0") if imposto else 0.0
-        v_total = fmt_decimal(str(vp + vi))
+        v_total = fmt_valor(str(vp + vi))
     except (ValueError, TypeError):
-        v_total = fmt_decimal(v_prod)
+        v_total = fmt_valor(v_prod)
+
     vinculo_pis = "08" if importacao else ""
     vinculo_cof = "08" if importacao else ""
+
     mot_des_campo = ""
     if v_icms_des and safe_float(v_icms_des.replace(",",".")) > 0:
         mot_des_campo = mot_des_icms if mot_des_icms else "9"
+
     c = [""] * 111
     c[0]="1030"; c[1]=cod_prod; c[2]=qtd; c[3]=v_total; c[4]=v_ipi
-    c[5]=fmt_decimal(v_prod); c[6]="1"; c[7]=d_di; c[8]=n_di; c[9]=cst_icms
-    c[10]=fmt_decimal(v_prod); c[11]=fmt_decimal(v_desc); c[12]=v_bc_icms
+    c[5]=fmt_valor(v_prod); c[6]="1"; c[7]=d_di; c[8]=n_di; c[9]=cst_icms
+    c[10]=fmt_valor(v_prod); c[11]=fmt_valor(v_desc); c[12]=v_bc_icms
     c[13]=v_bc_st; c[14]=aliq_icms; c[15]=""; c[16]=""
     c[17]=v_frete_item; c[18]=v_seg_item
-    c[19]=fmt_decimal(v_outro); c[20]=""; c[21]=v_icms; c[22]=""; c[23]=""
+    c[19]=fmt_valor(v_outro); c[20]=""; c[21]=v_icms; c[22]=""; c[23]=""
     c[24]=""; c[25]=""; c[26]=fmt_decimal(v_unit,6); c[27]=""; c[28]=cst_ipi
     c[29]=aliq_ipi; c[30]=""; c[31]=""; c[32]=""; c[33]=cfop; c[34]=""
     c[35]=aliq_pis; c[36]=v_pis; c[37]=aliq_cof; c[38]=v_cof
-    c[39]=fmt_decimal(v_prod); c[40]=cst_pis_ef; c[41]=bc_pis
+    c[39]=fmt_valor(v_prod); c[40]=cst_pis_ef; c[41]=bc_pis
     c[42]=cst_cof_ef; c[43]=bc_cof
     c[44]=""; c[45]=""; c[46]=""; c[47]=""
     c[48]=""; c[49]=""; c[50]=""; c[51]=""; c[52]=""; c[53]=""; c[54]=""
-    c[55]="S"; c[56]=unidade; c[57]=""; c[58]=""; c[59]=fmt_decimal(v_prod)
+    c[55]="S"; c[56]=unidade; c[57]=""; c[58]=""; c[59]=fmt_valor(v_prod)
     c[60]=""; c[61]=""; c[62]=""; c[63]=""; c[64]=""; c[65]=""; c[66]=""
     c[67]=""; c[68]=""; c[69]=""; c[70]=""
     c[71]=vinculo_pis; c[72]=vinculo_cof
@@ -1582,12 +1588,12 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
         "Emitente NF":    "P (Proprio)" if importacao else "T (Terceiros)",
         "Emissao":        fmt_date(get_text(ide, "nfe:dhEmi")),
         "Itens":          len(det_list),
-        "vNF":            fmt_decimal(get_text(total, "nfe:vNF")),
-        "vICMS":          fmt_decimal(get_text(total, "nfe:vICMS")),
-        "vICMSDes":       fmt_decimal(get_text(total, "nfe:vICMSDeson")),
-        "vIPI":           fmt_decimal(get_text(total, "nfe:vIPI")),
-        "vPIS":           fmt_decimal(get_text(total, "nfe:vPIS")),
-        "vCOFINS":        fmt_decimal(get_text(total, "nfe:vCOFINS")),
+        "vNF":            fmt_valor(get_text(total, "nfe:vNF")),
+        "vICMS":          fmt_valor(get_text(total, "nfe:vICMS")),
+        "vICMSDes":       fmt_valor(get_text(total, "nfe:vICMSDeson")),
+        "vIPI":           fmt_valor(get_text(total, "nfe:vIPI")),
+        "vPIS":           fmt_valor(get_text(total, "nfe:vPIS")),
+        "vCOFINS":        fmt_valor(get_text(total, "nfe:vCOFINS")),
         "Chave NF-e":     chave_resumo,
         "Cod Pais (Dom)": cod_pais_dominio,
         "Aliq PIS Pad":   fmt_decimal(str(aliq_pis_pad), 4),
@@ -1627,10 +1633,8 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
     if incluir_1015:
         for r in gerar_registros_1015(nfe):
             lines.append(r)
-    # ── V5.16: passa aliq_cof_override para 1020 ─────────────────────────────
     for r in gerar_registros_1020(nfe, importacao, aliq_cof_override=aliq_cof_override):
         lines.append(r)
-    # ─────────────────────────────────────────────────────────────────────────
     for seq, det in enumerate(det_list, start=1):
         r1030 = gerar_registro_1030(
             det, seq, importacao=importacao,
@@ -1673,12 +1677,12 @@ def converter_xml(xml_content: bytes, cnpj_fallback: str = "",
             except ValueError: pass
     for ct, d in ibs_gerados.items():
         lines.append(gerar_registro_1150(
-            ct, fmt_decimal(str(d["bc_ibs"])),
-            fmt_decimal(d["aliq_ibs"]), fmt_decimal(str(d["v_ibs"]))
+            ct, fmt_valor(str(d["bc_ibs"])),
+            fmt_decimal(d["aliq_ibs"]), fmt_valor(str(d["v_ibs"]))
         ))
         lines.append(gerar_registro_1151(
-            ct, fmt_decimal(str(d["bc_cbs"])),
-            fmt_decimal(d["aliq_cbs"]), fmt_decimal(str(d["v_cbs"]))
+            ct, fmt_valor(str(d["bc_cbs"])),
+            fmt_decimal(d["aliq_cbs"]), fmt_valor(str(d["v_cbs"]))
         ))
     return "\n".join(lines), resumo, (aliq_pis_pad, aliq_cof_pad)
 
@@ -1743,24 +1747,20 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V5.16-FINAL — Override COFINS: aliquota + valor recalculado + toggle na area principal</h4>
+        <h4>V5.17-FINAL — Campos de valor sempre retornam 0,00 quando ausentes ou zero</h4>
         <ul>
-          <li><b>CORRECAO 1030</b>: v_cof agora e recalculado como BC * 9,65% / 100
-              quando override ativo. Antes apenas a aliquota era substituida.</li>
-          <li><b>CORRECAO 1020</b>: gerar_registros_1020 agora recebe aliq_cof_override.
-              Itens com 10,25% sao agrupados em 9,65% com valor recalculado.
-              Registro 134 (total COFINS) tambem e recalculado.</li>
-          <li><b>Toggle na area principal</b>: aparece imediatamente apos o upload,
-              sem depender de ciclo extra de renderizacao.</li>
-          <li>PIS nunca alterado. Itens com COFINS != 10,25% nao sao afetados.</li>
+          <li><b>NOVA FUNCAO fmt_valor()</b>: todos os campos de valor monetario
+              (desconto, frete, seguro, outras despesas, IPI, ST, ICMS, ICMS desonerado,
+              PIS, COFINS, BC ICMS, BC ST, BC PIS, BC COFINS, IBS, CBS) agora retornam
+              <b>0,00</b> quando a tag esta ausente no XML ou possui valor zero.</li>
+          <li><b>fmt_decimal()</b> mantida para campos nao-monetarios (codigos,
+              aliquotas, quantidades, textos) onde vazio e aceitavel.</li>
+          <li>Correcao aplicada em: 1000, 1020, 1030, 1150, 1151 e resumo.</li>
         </ul>
-        <h4>V5.15-FINAL — Override COFINS 10,25% → 9,65% (somente aliquota)</h4>
+        <h4>V5.16-FINAL — Override COFINS: aliquota + valor recalculado</h4>
         <ul>
-          <li>Detecta automaticamente COFINS 10,25% e exibe toggle na sidebar.</li>
-        </ul>
-        <h4>V5.14-FINAL — Correcao critica nDI no registro 1030</h4>
-        <ul>
-          <li>Campo nDI usa tratar_numero_di(): remove ano + prefixo + zeros + DV.</li>
+          <li>COFINS 10,25% substituida por 9,65% com recalculo BC * 9,65% / 100.</li>
+          <li>Registros 1020 (cod 5 e 134) e 1030 corrigidos.</li>
         </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -1778,7 +1778,6 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True,
 )
 
-# Default: sem override ate que arquivos sejam carregados e toggle avaliado
 aliq_cof_override = None
 
 if uploaded_files:
@@ -1825,8 +1824,6 @@ if uploaded_files:
         st.warning("Nenhum XML de importacao encontrado para processar.")
         st.stop()
 
-    # ── V5.16: Deteccao e toggle COFINS na area principal ────────────────────
-    # Executado logo apos o parse dos arquivos, na mesma renderizacao.
     _tem_cofins_1025 = detectar_cofins_1025_nos_arquivos(arquivos_para_processar)
 
     if _tem_cofins_1025:
@@ -1843,23 +1840,14 @@ if uploaded_files:
             "🔄 Substituir COFINS 10,25% → 9,65% (aliquota + recalculo do valor)",
             value=False,
             key="toggle_cofins_override",
-            help=(
-                "Substitui a aliquota de 10,25% para 9,65% e recalcula o valor "
-                "de COFINS de cada item afetado como BC * 9,65% / 100. "
-                "PIS nao e alterado. Itens com outras aliquotas de COFINS nao sao afetados."
-            ),
         )
         if override_cofins_ativo:
-            st.success(
-                "✅ Override ativo: COFINS 10,25% → 9,65% com recalculo do valor aplicado "
-                "nos registros 0110, 1020 e 1030."
-            )
+            st.success("✅ Override ativo: COFINS 10,25% → 9,65% com recalculo do valor.")
             aliq_cof_override = 9.65
         else:
             st.caption("ℹ️ Toggle desligado: aliquotas e valores originais do XML serao mantidos.")
             aliq_cof_override = None
         st.markdown("---")
-    # ─────────────────────────────────────────────────────────────────────────
 
     st.markdown("#### 🔁 DE/PARA: CFOP → Acumulador")
     cfops_detectadas = extrair_cfops_importacao_dos_arquivos(arquivos_para_processar)
