@@ -13,30 +13,77 @@ try:
 except ImportError:
     EXCEL_DISPONIVEL = False
 
-VERSAO = "V5.17-FINAL"
+VERSAO = "V5.18-FINAL"
 DATA_CADASTRO_FIXO = "01/01/2020"
 
+# ─────────────────────────────────────────────
+# TEMA ADAPTATIVO (claro/escuro)
+# ─────────────────────────────────────────────
 def apply_tr_theme():
     st.markdown("""
         <style>
-        html, body, [class*="css"] { font-family: 'Segoe UI', 'Arial', sans-serif; color: #444444; }
-        h1, h2, h3 { color: #FF8000; font-weight: 700; }
-        section[data-testid="stSidebar"] { background-color: #444444; color: #FFFFFF; }
+        [data-theme="light"], :root {
+            --tr-laranja:        #FF8000;
+            --tr-laranja-hover:  #D64001;
+            --tr-bg-sidebar:     #444444;
+            --tr-bg-card:        #F5F5F5;
+            --tr-bg-info:        #FFF3E0;
+            --tr-bg-zip:         #E3F2FD;
+            --tr-bg-zip-warn:    #FFF8E1;
+            --tr-bg-cofins:      #FFF3E0;
+            --tr-bg-metric:      #E9E9E9;
+            --tr-texto-principal:#444444;
+            --tr-texto-card:     #444444;
+            --tr-texto-zip:      #1565C0;
+            --tr-texto-zip-warn: #795548;
+            --tr-border-zip:     #1565C0;
+            --tr-border-zipw:    #F9A825;
+            --tr-badge-bg:       #444444;
+            --tr-badge-texto:    #FFFFFF;
+        }
+        [data-theme="dark"] {
+            --tr-laranja:        #FF9A2E;
+            --tr-laranja-hover:  #FF6600;
+            --tr-bg-sidebar:     #1E1E1E;
+            --tr-bg-card:        #2A2A2A;
+            --tr-bg-info:        #3A2800;
+            --tr-bg-zip:         #0D2137;
+            --tr-bg-zip-warn:    #2D2200;
+            --tr-bg-cofins:      #3A2800;
+            --tr-bg-metric:      #2A2A2A;
+            --tr-texto-principal:#E0E0E0;
+            --tr-texto-card:     #DDDDDD;
+            --tr-texto-zip:      #90CAF9;
+            --tr-texto-zip-warn: #FFCC80;
+            --tr-border-zip:     #1565C0;
+            --tr-border-zipw:    #F9A825;
+            --tr-badge-bg:       #333333;
+            --tr-badge-texto:    #FF9A2E;
+        }
+        html, body, [class*="css"] {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            color: var(--tr-texto-principal);
+        }
+        h1, h2, h3 { color: var(--tr-laranja); font-weight: 700; }
+        section[data-testid="stSidebar"] { background-color: var(--tr-bg-sidebar) !important; }
         section[data-testid="stSidebar"] * { color: #FFFFFF !important; }
-        .stButton > button { background-color: #FF8000; color: #FFFFFF; border: none; border-radius: 4px; font-weight: bold; }
-        .stButton > button:hover { background-color: #D64001; }
-        .stDownloadButton > button { background-color: #FF8000; color: #FFFFFF; border: none; border-radius: 4px; font-weight: bold; }
-        .stDownloadButton > button:hover { background-color: #D64001; }
-        hr { border-color: #FF8000; }
-        [data-testid="metric-container"] { background-color: #E9E9E9; border-left: 4px solid #FF8000; border-radius: 4px; padding: 10px; }
-        .instrucoes-box { background-color: #E9E9E9; border-left: 4px solid #FF8000; border-radius: 4px; padding: 16px 20px; margin: 12px 0; color: #444444; }
-        .instrucoes-box h4 { color: #FF8000; margin-top: 14px; margin-bottom: 6px; }
+        .stButton > button { background-color: var(--tr-laranja) !important; color: #FFFFFF !important; border: none; border-radius: 4px; font-weight: bold; }
+        .stButton > button:hover { background-color: var(--tr-laranja-hover) !important; }
+        .stDownloadButton > button { background-color: var(--tr-laranja) !important; color: #FFFFFF !important; border: none; border-radius: 4px; font-weight: bold; }
+        .stDownloadButton > button:hover { background-color: var(--tr-laranja-hover) !important; }
+        hr { border-color: var(--tr-laranja); }
+        [data-testid="metric-container"] { background-color: var(--tr-bg-metric); border-left: 4px solid var(--tr-laranja); border-radius: 4px; padding: 10px; }
+        .instrucoes-box { background-color: var(--tr-bg-metric); border-left: 4px solid var(--tr-laranja); border-radius: 4px; padding: 16px 20px; margin: 12px 0; color: var(--tr-texto-principal); }
+        .instrucoes-box h4 { color: var(--tr-laranja); margin-top: 14px; margin-bottom: 6px; }
         .instrucoes-box h4:first-child { margin-top: 0; }
-        .cnpj-badge { background-color: #444444; border: 1px solid #FF8000; border-radius: 4px; padding: 6px 12px; font-family: Consolas, monospace; font-size: 13px; display: inline-block; margin: 4px 0; }
-        .info-origem { background-color: #FFF3E0; border-left: 3px solid #FF8000; border-radius: 3px; padding: 8px 12px; font-size: 12px; color: #444444; margin: 6px 0; }
-        .zip-info { background-color: #E3F2FD; border-left: 4px solid #1565C0; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: #1565C0; }
-        .zip-warn { background-color: #FFF8E1; border-left: 4px solid #F9A825; border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: #795548; }
-        .cofins-alert { background-color: #FFF3E0; border: 2px solid #FF8000; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
+        .cnpj-badge { background-color: var(--tr-badge-bg); border: 1px solid var(--tr-laranja); border-radius: 4px; padding: 6px 12px; font-family: Consolas, monospace; font-size: 13px; display: inline-block; margin: 4px 0; color: var(--tr-badge-texto); }
+        .info-origem { background-color: var(--tr-bg-info); border-left: 3px solid var(--tr-laranja); border-radius: 3px; padding: 8px 12px; font-size: 12px; color: var(--tr-texto-card); margin: 6px 0; }
+        .zip-info { background-color: var(--tr-bg-zip); border-left: 4px solid var(--tr-border-zip); border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: var(--tr-texto-zip); }
+        .zip-warn { background-color: var(--tr-bg-zip-warn); border-left: 4px solid var(--tr-border-zipw); border-radius: 4px; padding: 10px 14px; margin: 8px 0; font-size: 13px; color: var(--tr-texto-zip-warn); }
+        .cofins-alert { background-color: var(--tr-bg-cofins); border: 2px solid var(--tr-laranja); border-radius: 6px; padding: 14px 18px; margin: 12px 0; color: var(--tr-texto-card); }
+        [data-testid="stExpander"] summary { color: var(--tr-laranja) !important; font-weight: 600; }
+        [data-testid="stDataFrame"] { border: 1px solid var(--tr-laranja); border-radius: 4px; }
+        [data-testid="stProgressBar"] > div > div { background-color: var(--tr-laranja) !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -49,16 +96,15 @@ st.set_page_config(
 apply_tr_theme()
 
 st.markdown(f"""
-    <div style="background:#444444; padding:24px 28px 18px 28px; border-radius:8px;
-                border-top:6px solid #FF8000; margin-bottom:28px;">
-        <h2 style="color:#FF8000; margin:0; font-family:'Segoe UI',Arial,sans-serif;">
+    <div style="background:var(--tr-bg-sidebar,#444444); padding:24px 28px 18px 28px;
+                border-radius:8px; border-top:6px solid var(--tr-laranja,#FF8000); margin-bottom:28px;">
+        <h2 style="color:var(--tr-laranja,#FF8000); margin:0; font-family:'Segoe UI',Arial,sans-serif;">
             🔄 Conversor XML NF-e → Dominio Sistemas &nbsp;|&nbsp; {VERSAO}
         </h2>
         <p style="color:#DDDDDD; margin:6px 0 0 0; font-family:'Segoe UI',Arial,sans-serif;">
             Converte XML de NF-e para leiaute padrao de importacao do
             <strong>Dominio Sistemas</strong>.
-            Saida em <strong>ANSI (Latin-1)</strong>. Aceita <strong>XML</strong>
-            ou <strong>ZIP</strong>.
+            Saida em <strong>ANSI (Latin-1)</strong>. Aceita <strong>XML</strong> ou <strong>ZIP</strong>.
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -313,7 +359,7 @@ def get_text(element, path: str, default: str = "") -> str:
     return default
 
 def fmt_decimal(value: str, decimals: int = 2) -> str:
-    """Formata decimal. Retorna '' quando vazio (uso geral — codigos, textos)."""
+    """Formata decimal. Retorna '' quando vazio — uso para codigos, aliquotas, textos."""
     if not value:
         return ""
     try:
@@ -561,9 +607,6 @@ def tratar_numero_di(n_di_raw: str) -> str:
     sem_dv  = sem_ano[:-1]
     return str(int(sem_dv))
 
-# ─────────────────────────────────────────────
-# DETECCAO DE COFINS 10,25%
-# ─────────────────────────────────────────────
 def detectar_cofins_1025_nos_arquivos(arquivos: list) -> bool:
     for arq in arquivos:
         root_s, _ = parse_xml_seguro(arq["bytes"])
@@ -805,9 +848,9 @@ def gerar_excel_relatorio(dados_itens: list) -> bytes:
     leg_row = tot_row + 2
     ws.cell(row=leg_row, column=1, value="LEGENDA DE CORES").font = Font(bold=True, color="FF8000", size=10)
     legendas = [
-        ("Verde",   green_fill,  "Linha inteira: CST convertido para entrada com direito a credito PIS/COFINS"),
-        ("Amarelo", yellow_fill, "Linha inteira: Aliquota PIS/COFINS REDUZIDA em relacao ao padrao majoritario da nota"),
-        ("Laranja", orange_fill, "Linha inteira: Aliquota PIS/COFINS DIFERENTE do padrao da nota (acima ou distinta)"),
+        ("Verde",   green_fill,  "CST convertido para entrada com direito a credito PIS/COFINS"),
+        ("Amarelo", yellow_fill, "Aliquota PIS/COFINS REDUZIDA em relacao ao padrao majoritario da nota"),
+        ("Laranja", orange_fill, "Aliquota PIS/COFINS DIFERENTE do padrao da nota"),
     ]
     for i, (nome, fill, desc) in enumerate(legendas, start=1):
         c1 = ws.cell(row=leg_row + i, column=1, value=nome)
@@ -986,9 +1029,7 @@ def gerar_registro_0100(det, grupo_padrao: int = 0,
     c[16]=""; c[17]=fmt_decimal(val_unit,3); c[18]=""; c[19]=""
     c[20]=cst_icms; c[21]=aliq_icms; c[22]=aliq_ipi; c[23]="M"; c[24]=""; c[25]="N"
     for i in range(26, 67): c[i]=""
-    c[67]=sped_tipo_item
-    c[68]=""
-    c[69]=conta_contabil
+    c[67]=sped_tipo_item; c[68]=""; c[69]=conta_contabil
     for i in range(70, 74): c[i]=""
     c[74]=DATA_CADASTRO_FIXO
     for i in range(75, 88): c[i]=""
@@ -1078,7 +1119,7 @@ def gerar_registro_1000(nfe_root, cnpj_empresa: str,
     c_mun_fg = get_text(ide, "nfe:cMunFG")
     det_list   = nfe_root.findall("nfe:infNFe/nfe:det", NS)
     cfop_first = get_text(det_list[0].find("nfe:prod", NS), "nfe:CFOP") if det_list else ""
-    # Campos de valor no 1000: sempre fmt_valor (0,00 quando ausente/zero)
+    # Todos os campos de valor monetario usam fmt_valor → 0,00 quando ausente/zero
     v_nf     = fmt_valor(get_text(total, "nfe:vNF"))
     v_pis    = fmt_valor(get_text(total, "nfe:vPIS"))
     v_cofins = fmt_valor(get_text(total, "nfe:vCOFINS"))
@@ -1349,15 +1390,12 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     unidade  = get_text(prod,"nfe:uCom")
     v_unit   = get_text(prod,"nfe:vUnCom")
     cest     = get_text(prod,"nfe:CEST")
-
-    # ── Campos de valor acessorios: sempre fmt_valor (0,00 quando ausente/zero)
+    # Campos de valor acessorios: fmt_valor → 0,00 quando ausente/zero
     v_frete_item = fmt_valor(get_text(prod, "nfe:vFrete"))
     v_seg_item   = fmt_valor(get_text(prod, "nfe:vSeg"))
-
     di_node = prod.find("nfe:DI", NS)
     n_di = tratar_numero_di(get_text(di_node, "nfe:nDI")) if di_node is not None else ""
     d_di = fmt_date(get_text(di_node,"nfe:dDI"))          if di_node is not None else ""
-
     icms_node = None
     v_bc_icms = aliq_icms = v_icms = cst_icms = v_icms_des = v_bc_st = ""
     mot_des_icms = ""
@@ -1366,7 +1404,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
     v_cof = aliq_cof = cst_cof_xml = bc_cof = ""
     ibs_class_trib = ibs_bc = ibs_aliq = ibs_val = ""
     cbs_class_trib = cbs_bc = cbs_aliq = cbs_val = ""
-
     if imposto is not None:
         for tp in ["ICMS00","ICMS10","ICMS20","ICMS30","ICMS40","ICMS51","ICMS60",
                    "ICMS70","ICMS90","ICMSSN101","ICMSSN102","ICMSSN201",
@@ -1382,7 +1419,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
             v_icms_des   = fmt_valor(get_text(icms_node,"nfe:vICMSDeson"))
             v_bc_st      = fmt_valor(get_text(icms_node,"nfe:vBCST"))
             mot_des_icms = get_text(icms_node,"nfe:motDesICMS") or ""
-
         ipi_trib = imposto.find("nfe:IPI/nfe:IPITrib", NS)
         ipi_nt   = imposto.find("nfe:IPI/nfe:IPINT", NS)
         if ipi_trib is not None:
@@ -1393,7 +1429,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
             v_ipi    = "0,00"
             aliq_ipi = "0,00"
             cst_ipi  = get_text(ipi_nt,"nfe:CST")
-
         pis_node = imposto.find("nfe:PIS", NS)
         if pis_node is not None:
             for pt in ["PISAliq","PISQtde","PISNT","PISOutr"]:
@@ -1405,7 +1440,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                     aliq_pis    = fmt_decimal(aliq_raw, 4)
                     bc_pis      = fmt_valor(get_text(pn,"nfe:vBC"))
                     break
-
         cof_node = imposto.find("nfe:COFINS", NS)
         if cof_node is not None:
             for ct in ["COFINSAliq","COFINSQtde","COFINSNT","COFINSOutr"]:
@@ -1425,7 +1459,6 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                         aliq_cof = fmt_decimal(aliq_raw, 4)
                         v_cof    = fmt_valor(get_text(cn,"nfe:vCOFINS"))
                     break
-
         ibs_node = imposto.find("nfe:IBSCBS", NS)
         if ibs_node is not None:
             ibs_class_trib = get_text(ibs_node,"nfe:cClassTrib")
@@ -1442,10 +1475,8 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
                 if gcbs is not None:
                     cbs_aliq = fmt_decimal(get_text(gcbs,"nfe:pCBS"))
                     cbs_val  = fmt_valor(get_text(gcbs,"nfe:vCBS"))
-
     cst_pis_ef = obter_cst_entrada(cst_pis_xml, tem_direito_credito)
     cst_cof_ef = obter_cst_entrada(cst_cof_xml, tem_direito_credito)
-
     try:
         vp = float(v_prod or "0")
         vi = float(get_text(imposto.find("nfe:IPI/nfe:IPITrib",NS) if imposto else None,
@@ -1453,14 +1484,11 @@ def gerar_registro_1030(det, seq: int, importacao: bool = False,
         v_total = fmt_valor(str(vp + vi))
     except (ValueError, TypeError):
         v_total = fmt_valor(v_prod)
-
     vinculo_pis = "08" if importacao else ""
     vinculo_cof = "08" if importacao else ""
-
     mot_des_campo = ""
     if v_icms_des and safe_float(v_icms_des.replace(",",".")) > 0:
         mot_des_campo = mot_des_icms if mot_des_icms else "9"
-
     c = [""] * 111
     c[0]="1030"; c[1]=cod_prod; c[2]=qtd; c[3]=v_total; c[4]=v_ipi
     c[5]=fmt_valor(v_prod); c[6]="1"; c[7]=d_di; c[8]=n_di; c[9]=cst_icms
@@ -1747,17 +1775,16 @@ with st.sidebar:
 with st.expander("Instrucoes / Historico de versoes", expanded=False):
     st.markdown("""
         <div class="instrucoes-box">
-        <h4>V5.17-FINAL — Campos de valor sempre retornam 0,00 quando ausentes ou zero</h4>
+        <h4>V5.18-FINAL — Tema adaptativo claro/escuro + fmt_valor em todos os campos monetarios</h4>
         <ul>
-          <li><b>NOVA FUNCAO fmt_valor()</b>: todos os campos de valor monetario
-              (desconto, frete, seguro, outras despesas, IPI, ST, ICMS, ICMS desonerado,
-              PIS, COFINS, BC ICMS, BC ST, BC PIS, BC COFINS, IBS, CBS) agora retornam
-              <b>0,00</b> quando a tag esta ausente no XML ou possui valor zero.</li>
-          <li><b>fmt_decimal()</b> mantida para campos nao-monetarios (codigos,
-              aliquotas, quantidades, textos) onde vazio e aceitavel.</li>
+          <li><b>Tema adaptativo</b>: CSS com variaveis <code>--tr-*</code> detecta automaticamente
+              o tema claro ou escuro do Windows/Streamlit. Sidebar sempre escura (identidade TR).</li>
+          <li><b>fmt_valor()</b>: todos os campos de valor monetario retornam <b>0,00</b>
+              quando a tag esta ausente ou com valor zero no XML.</li>
+          <li><b>fmt_decimal()</b>: mantida para codigos, aliquotas e textos onde vazio e aceitavel.</li>
           <li>Correcao aplicada em: 1000, 1020, 1030, 1150, 1151 e resumo.</li>
         </ul>
-        <h4>V5.16-FINAL — Override COFINS: aliquota + valor recalculado</h4>
+        <h4>V5.16-FINAL — Override COFINS 10,25% → 9,65% (aliquota + valor recalculado)</h4>
         <ul>
           <li>COFINS 10,25% substituida por 9,65% com recalculo BC * 9,65% / 100.</li>
           <li>Registros 1020 (cod 5 e 134) e 1030 corrigidos.</li>
